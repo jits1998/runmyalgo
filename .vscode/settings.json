@@ -12,6 +12,16 @@
         "editor.codeActionsOnSave": {
             "source.organizeImports": "explicit"
         },
-      },
-      "isort.args":["--profile", "black"],
+        "editor.insertSpaces": true,
+        "editor.formatOnType": false,
+    },
+    "black-formatter.args": [
+        "--line-length",
+        "119"
+    ],
+    "isort.args": [
+        "--profile",
+        "black"
+    ],
+    
 }

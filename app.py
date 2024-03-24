@@ -8,20 +8,18 @@ from flask import Flask, redirect, session
 from flask_session import Session
 
 app = Flask(__name__)
-
 app.config["SESSION_TYPE"] = "filesystem"
-
 Session(app)
-
 app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(minutes=180)
+
+# TODO override with proper config file
+serverConfig = {}
+sytemConfg = {"homeUrl": "http://localhost:8080"}
 
 
 @app.route("/")
 def redirectHome():
     return redirect("/me/" + session.get("short_code", "5207"))
-
-
-app.add_url_rule("/", "default_home", redirectHome)
 
 
 def initLoggingConfg(filepath):
@@ -35,9 +33,15 @@ def initLoggingConfg(filepath):
     )
 
 
-# Execution starts here
-serverConfig = {}
+def timectime(s):
+    if s is None:
+        return None
+    if isinstance(s, str):
+        s = datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S").timestamp()
+    return datetime.datetime.fromtimestamp(s).strftime("%H:%M:%S")
 
+
+# Execution starts here
 deployDir = serverConfig.get("deployDir", "./.deploy/")
 if os.path.exists(deployDir) == False:
     try:
@@ -54,11 +58,8 @@ if os.path.exists(logFileDir) == False:
         print("LogFile Directory " + logFileDir + " does not exist. Exiting the app.")
         exit(-1)
 
-print("Deploy  Directory = " + deployDir)
-print("LogFile Directory = " + logFileDir)
+print("Deploy Directory = " + deployDir)
 initLoggingConfg(logFileDir + "/app.log")
-
-logging.info("serverConfig => %s", serverConfig)
 
 werkzeugLog = logging.getLogger("werkzeug")
 werkzeugLog.setLevel(logging.ERROR)
@@ -68,13 +69,6 @@ werkzeugLog.setLevel(logging.ERROR)
 
 port = serverConfig.get("port", "8080")
 
-
-def timectime(s):
-    if s is None:
-        return None
-    if isinstance(s, str):
-        s = datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S").timestamp()
-    return datetime.datetime.fromtimestamp(s).strftime("%H:%M:%S")
-
-
 app.jinja_env.filters["ctime"] = timectime
+
+app.add_url_rule("/", "default_home", redirectHome)
