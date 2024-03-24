@@ -7,17 +7,17 @@ from flask import Flask, redirect, session
 
 from flask_session import Session
 
-app = Flask(__name__)
-app.config["SESSION_TYPE"] = "filesystem"
-Session(app)
-app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(minutes=180)
+flask_app = Flask(__name__)
+flask_app.config["SESSION_TYPE"] = "filesystem"
+Session(flask_app)
+flask_app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(minutes=180)
 
 # TODO override with proper config file
 serverConfig = {}
 sytemConfg = {"homeUrl": "http://localhost:8080"}
 
 
-@app.route("/")
+@flask_app.route("/")
 def redirectHome():
     return redirect("/me/" + session.get("short_code", "5207"))
 
@@ -69,6 +69,7 @@ werkzeugLog.setLevel(logging.ERROR)
 
 port = serverConfig.get("port", "8080")
 
-app.jinja_env.filters["ctime"] = timectime
+flask_app.jinja_env.filters["ctime"] = timectime
 
-app.add_url_rule("/", "default_home", redirectHome)
+flask_app.add_url_rule("/", "default_home", redirectHome)
+from views import home

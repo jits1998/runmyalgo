@@ -1,10 +1,10 @@
 {
     "files.exclude": {
-        "__pycache__": true,
-        ".deploy": true,
+        "**/__pycache__": true,
+        "**/.deploy": true,
         ".venv": true,
         ".vscode": true,
-        "flask_session": true
+        "**/flask_session": true
     },
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
@@ -12,7 +12,6 @@
         "editor.codeActionsOnSave": {
             "source.organizeImports": "explicit"
         },
-        "editor.insertSpaces": true,
         "editor.formatOnType": false,
     },
     "black-formatter.args": [
