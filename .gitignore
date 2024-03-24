@@ -1,0 +1,5 @@
+flask_session
+__pycache__
+.deploy
+*.pyc
+.vscode
