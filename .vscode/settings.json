@@ -1,0 +1,17 @@
+{
+    "files.exclude": {
+        "__pycache__": true,
+        ".deploy": true,
+        ".venv": true,
+        ".vscode": true,
+        "flask_session": true
+    },
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+      },
+      "isort.args":["--profile", "black"],
+}
