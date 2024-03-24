@@ -7,7 +7,7 @@ from flask import Flask, redirect, session
 
 from flask_session import Session
 
-flask_app = Flask(__name__)
+flask_app = Flask(__name__, template_folder="./src/templates")
 flask_app.config["SESSION_TYPE"] = "filesystem"
 Session(flask_app)
 flask_app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(minutes=180)
@@ -72,4 +72,4 @@ port = serverConfig.get("port", "8080")
 flask_app.jinja_env.filters["ctime"] = timectime
 
 flask_app.add_url_rule("/", "default_home", redirectHome)
-from views import home
+from src.views import home
