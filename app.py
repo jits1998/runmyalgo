@@ -14,7 +14,7 @@ flask_app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(minutes=180)
 
 # TODO override with proper config file
 serverConfig = {}
-sytemConfg = {"homeUrl": "http://localhost:8080"}
+systemConfig = {"homeUrl": "http://localhost:8080"}
 
 
 @flask_app.route("/")
