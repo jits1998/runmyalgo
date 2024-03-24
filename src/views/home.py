@@ -1,4 +1,5 @@
 from functools import wraps
+from threading import Thread
 
 from flask import abort, redirect, render_template, request, session
 
@@ -21,6 +22,8 @@ def home(short_code):
             session["access_token"] = request.args["accessToken"]
             return render_template("index_algostarted_new.html")
         return render_template("index.html", broker=getUserConfig(short_code).get("broker", "zerodha"))
+    else:
+        return "hello"
 
 
 @app.route("/apis/broker/login/<broker_name>")
@@ -32,12 +35,18 @@ def login(broker_name):
 
     userConfig = getUserConfig(short_code)
 
-    userDetails = UserDetails(userConfig["broker"])
+    userDetails = UserDetails(name=short_code, args=(userConfig["broker"],))
     userDetails.short_code = short_code
-    userDetails.cliendID = userConfig["clientID"]
+    userDetails.clientID = userConfig["clientID"]
     userDetails.secret = userConfig["appSecret"]
     userDetails.key = userConfig["appKey"]
-    redirectUrl = brokers[broker_name]["LoginHandler"](userDetails).login(request.args)
+    loginHandler = brokers[broker_name]["LoginHandler"](userDetails)
+    redirectUrl = loginHandler.login(request.args)
+
+    if loginHandler.getAccessToken() is not None:
+        session["access_token"] = loginHandler.accessToken
+        userDetails.start()
+        userDetails.loginHandler = loginHandler
 
     return redirect(redirectUrl, code=302)
 
