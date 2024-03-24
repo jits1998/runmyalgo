@@ -1,9 +1,20 @@
-Checkout project
+# Steps to run:
 
-create venv
+1. Checkout project
+2. create venv
+3. select venv
+4. run bash init.py
+5. create a json file with a short code containing the following:
 
-select venv
+```json
+{
+  "broker": "zerodha",
+  "clientID": "",
+  "appKey": "",
+  "appSecret": "",
+  "multiple": "1",
+  "algoType" : "TestAlgo"
+}
+```
 
-run bash init.py
-
-run flask app
+6. run flask app
