@@ -1,27 +1,28 @@
 import logging
+from typing import Dict
 
-from kiteconnect import KiteConnect
+from kiteconnect import KiteConnect  # type: ignore[import-untyped]
 
-from broker.base import BaseLogin
+from broker import BaseLogin
 from config import getSystemConfig
 
 
-class ZerodhaLoginHandler(BaseLogin):
-    def __init__(self, userDetails):
+class ZerodhaLoginHandler(KiteConnect, BaseLogin):
+    def __init__(self, userDetails: Dict[str, str]):
         BaseLogin.__init__(self, userDetails)
 
     def login(self, args):
         logging.info("==> ZerodhaLogin .args => %s", args)
         systemConfig = getSystemConfig()
-        brokerHandle = KiteConnect(api_key=self.userDetails.key)
+        brokerHandle = KiteConnect(api_key=self.userDetails["key"])
         self.setBrokerHandle(brokerHandle)
         redirectUrl = None
         if "request_token" in args:
             requestToken = args["request_token"]
             logging.info("Zerodha requestToken = %s", requestToken)
-            broker_session = brokerHandle.generate_session(requestToken, api_secret=self.userDetails.secret)
+            broker_session = brokerHandle.generate_session(requestToken, api_secret=self.userDetails["secret"])
 
-            if not broker_session["user_id"] == self.userDetails.clientID:
+            if not broker_session["user_id"] == self.userDetails["clientID"]:
                 raise Exception("Invalid User Credentials")
 
             accessToken = broker_session["access_token"]

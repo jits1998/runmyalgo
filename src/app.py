@@ -2,19 +2,20 @@ import datetime
 import logging
 import os
 from logging.handlers import TimedRotatingFileHandler
+from typing import Dict, Union
 
 from flask import Flask, redirect, session
 
-from flask_session import Session
+from flask_session import Session  # type: ignore
 
-flask_app = Flask(__name__, template_folder="./src/templates")
+flask_app = Flask(__name__)
 flask_app.config["SESSION_TYPE"] = "filesystem"
 Session(flask_app)
 flask_app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(minutes=180)
 
 # TODO override with proper config file
-serverConfig = {}
-systemConfig = {"homeUrl": "http://localhost:8080"}
+serverConfig: Dict[str, str] = {}
+systemConfig: Dict[str, str] = {"homeUrl": "http://localhost:8080"}
 
 
 @flask_app.route("/")
@@ -22,7 +23,7 @@ def redirectHome():
     return redirect("/me/" + session.get("short_code", "5207"))
 
 
-def initLoggingConfg(filepath):
+def initLoggingConfg(filepath: str) -> None:
     format = "%(asctime)s: %(message)s"
     handler = TimedRotatingFileHandler(filepath, when="midnight")
     logging.basicConfig(
@@ -33,7 +34,7 @@ def initLoggingConfg(filepath):
     )
 
 
-def timectime(s):
+def timectime(s: Union[str, float]) -> str:
     if s is None:
         return None
     if isinstance(s, str):
@@ -72,4 +73,4 @@ port = serverConfig.get("port", "8080")
 flask_app.jinja_env.filters["ctime"] = timectime
 
 flask_app.add_url_rule("/", "default_home", redirectHome)
-from src.views import home
+from views import home

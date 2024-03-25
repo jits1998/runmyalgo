@@ -1,10 +1,10 @@
 from functools import wraps
-from threading import Thread
+from typing import Callable
 
 from flask import abort, redirect, render_template, request, session
 
 from app import flask_app as app
-from broker import brokers, load_broker_module
+from broker import BaseLogin, brokers, load_broker_module
 from config import getUserConfig
 from models import UserDetails
 from utils import getTradeManager
@@ -27,21 +27,21 @@ def home(short_code):
 
 
 @app.route("/apis/broker/login/<broker_name>")
-def login(broker_name):
+def login(broker_name: str):
 
     load_broker_module(broker_name)
 
-    short_code = session["short_code"]
+    short_code: str = session["short_code"]
 
-    userConfig = getUserConfig(short_code)
+    userConfig: dict = getUserConfig(short_code)
 
     userDetails = UserDetails(name=short_code, args=(userConfig["broker"],))
     userDetails.short_code = short_code
     userDetails.clientID = userConfig["clientID"]
     userDetails.secret = userConfig["appSecret"]
     userDetails.key = userConfig["appKey"]
-    loginHandler = brokers[broker_name]["LoginHandler"](userDetails)
-    redirectUrl = loginHandler.login(request.args)
+    loginHandler: BaseLogin = brokers[broker_name]["LoginHandler"](userDetails.__dict__)
+    redirectUrl: str = loginHandler.login(request.args)
 
     if loginHandler.getAccessToken() is not None:
         session["access_token"] = loginHandler.accessToken
@@ -52,7 +52,7 @@ def login(broker_name):
 
 
 # Authentication decorator
-def token_required(f):
+def token_required(f: Callable):
     @wraps(f)
     def decorator(*args, **kwargs):
         short_code = kwargs["short_code"]
