@@ -32,4 +32,5 @@
     ],
     "explorer.sortOrder": "filesFirst",
     "gitlens.plusFeatures.enabled": false,
+    "mypy-type-checker.cwd": "${workspaceFolder}/src",
 }
