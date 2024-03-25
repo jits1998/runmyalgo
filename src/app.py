@@ -44,6 +44,9 @@ def timectime(s: Union[str, float]) -> str:
 
 # Execution starts here
 deployDir = serverConfig.get("deployDir", "./.deploy/")
+if serverConfig.get("deployDir", None) == None:
+    serverConfig["deployDir"] = deployDir
+
 if os.path.exists(deployDir) == False:
     try:
         os.mkdir(deployDir)

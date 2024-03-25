@@ -12,22 +12,22 @@ class BaseHandler(Generic[T]):
     def __init__(self, broker: T) -> None:
         self.broker: T = broker
 
-    def set_access_token(self) -> str:
+    def set_access_token(self, accessToken) -> None:
         raise Exception("Method not to be called")
 
-    def margins(self) -> list:
+    def margins(self) -> List:
         raise Exception("Method not to be called")
 
-    def positions(self) -> list:
+    def positions(self) -> List:
         raise Exception("Method not to be called")
 
-    def orders(self) -> list:
+    def orders(self) -> List:
         raise Exception("Method not to be called")
 
-    def quote(self, key) -> Quote:
+    def quote(self, key) -> Dict:
         raise Exception("Method not to be called")
 
-    def instruments(self, exchange) -> list:
+    def instruments(self, exchange) -> List:
         raise Exception("Method not to be called")
 
     def getBrokerHandle(self) -> T:

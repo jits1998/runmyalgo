@@ -3,7 +3,9 @@ import logging
 import threading
 import time
 
-from core.TradeManager import TradeManager
+import instruments
+from broker import brokers, load_broker_module
+from utils import getBrokerLogin, getTradeManager, getUserDetails
 
 # from Test import Test
 
@@ -14,19 +16,24 @@ class BaseAlgo:
         self.strategyConfig = {}
 
     def startAlgo(self, accessToken, short_code, multiple=0):
-        if Utils.getTradeManager(short_code) is not None:
+        if getTradeManager(short_code) is not None:
             logging.info("Algo has already started..")
             return
 
         logging.info("Starting Algo...")
 
-        if Controller.getBrokerLogin(short_code) is None:
-            Controller.handleBrokerLogin({}, short_code)
-            brokerLogin = Controller.getBrokerLogin(short_code)
+        if getBrokerLogin(short_code) is None:
+            userDetails = getUserDetails(short_code)
+            userDetails.start()
+            load_broker_module(userDetails.broker)
+            loginHandler: BaseLogin = brokers[userDetails.broker]["LoginHandler"](userDetails.__dict__)
+            loginHandler.login({})
+            userDetails.loginHandler = loginHandler
+            brokerLogin = getBrokerLogin(short_code)
             brokerLogin.setAccessToken(accessToken)
-            Controller.getBrokerLogin(short_code).getBrokerHandle().set_access_token(accessToken)
+            brokerLogin.getBrokerHandle().set_access_token(accessToken)
 
-        instrumentsList = Instruments.fetchInstruments(short_code)
+        instrumentsList = instruments.fetchInstruments(short_code)
 
         if len(instrumentsList) == 0:
             # something is wrong. We need to inform the user

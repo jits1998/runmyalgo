@@ -67,6 +67,8 @@ def startAlgo():
         algoConfigModule = importlib.import_module("algos")
         algoConfigClass = getattr(algoConfigModule, algoType)
 
+        algoConfigClass().startAlgo(session["access_token"], session["short_code"], userDetails.multiple)
+
         # start algo in a separate thread
         x = threading.Thread(
             target=algoConfigClass().startAlgo,

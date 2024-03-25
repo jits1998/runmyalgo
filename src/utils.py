@@ -1,4 +1,5 @@
 import threading
+from datetime import datetime, timedelta
 from typing import Union
 
 from broker import BaseLogin
@@ -41,3 +42,11 @@ def getBrokerLogin(short_code: str) -> Union[BaseLogin, None]:
             user: UserDetails = t  # type: ignore
             return user.loginHandler
     return None
+
+
+def getEpoch(datetimeObj=None):
+    # This method converts given datetimeObj to epoch seconds
+    if datetimeObj == None:
+        datetimeObj = datetime.now()
+    epochSeconds = datetime.timestamp(datetimeObj)
+    return int(epochSeconds)  # converting double to long

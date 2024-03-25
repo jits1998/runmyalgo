@@ -1,10 +1,18 @@
 {
+    "files.associations": {
+        "*.html": "jinja-html"
+    },
+    "emmet.includeLanguages": {
+        "jinja-html": "html"
+    },
     "files.exclude": {
         "**/__pycache__": true,
         "**/.deploy": true,
         ".venv": true,
         ".vscode": true,
-        "**/flask_session": true
+        "**/flask_session": true,
+        ".gitignore": true,
+        ".mypy_cache": true
     },
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
@@ -16,11 +24,12 @@
     },
     "black-formatter.args": [
         "--line-length",
-        "119"
+        "159"
     ],
     "isort.args": [
         "--profile",
         "black"
     ],
-    
+    "explorer.sortOrder": "filesFirst",
+    "gitlens.plusFeatures.enabled": false,
 }
