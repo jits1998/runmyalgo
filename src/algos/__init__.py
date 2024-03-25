@@ -1,4 +1,16 @@
+import threading
+from typing import Union
+
 from algos.baseAlgo import BaseAlgo
+
+
+def getAlgo(short_code: str) -> Union[BaseAlgo, None]:
+    for t in threading.enumerate():
+        if t.getName() == short_code:
+            assert isinstance(t, BaseAlgo)
+            algo: BaseAlgo = t
+            return algo
+    return None
 
 
 class TestAlgo(BaseAlgo):

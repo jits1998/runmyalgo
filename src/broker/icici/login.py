@@ -17,7 +17,7 @@ class ICICILogin(BaseLogin):
         logging.info("==> ICICILogin .args => %s", args)
         systemConfig = getSystemConfig()
         brokerHandle = BreezeConnect(api_key=self.userDetails["key"])
-        self.setBrokerHandle(ICICIHandler(brokerHandle, self.userDetails))
+        self.setBrokerHandler(ICICIHandler(brokerHandle, self.userDetails))
         redirectUrl = None
         if "apisession" in args:
 
@@ -26,14 +26,13 @@ class ICICILogin(BaseLogin):
             logging.info("ICICI apisession = %s", apisession)
 
             self.setAccessToken(apisession)
-            self.getBrokerHandle().set_access_token(apisession)
 
             if not brokerHandle.user_id == self.userDetails["clientID"]:
                 raise Exception("Invalid User Credentials")
 
             logging.info("ICICI Login successful. apisession = %s", apisession)
 
-            homeUrl = systemConfig["homeUrl"] + "?loggedIn=true"
+            homeUrl = systemConfig["homeUrl"]
             logging.info("ICICI Redirecting to home page %s", homeUrl)
 
             redirectUrl = homeUrl

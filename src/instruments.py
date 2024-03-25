@@ -1,14 +1,15 @@
 import json
 import logging
 import os
+from datetime import datetime
 from typing import Dict
 
+from broker.base import BaseHandler
 from config import getServerConfig
-from utils import getBrokerLogin, getEpoch
 
 instrumentsData: Dict[str, Dict] = {}
-symbolToInstrumentMap = {}
-tokenToInstrumentMap = {}
+symbolToInstrumentMap: Dict[str, Dict[str, str]] = {}
+tokenToInstrumentMap: Dict[str, Dict[str, str]] = {}
 
 
 def getTimestampsData(short_code):
@@ -70,15 +71,14 @@ def saveInstruments(short_code, instruments=[]):
     updateLastSavedTimestamp(short_code)
 
 
-def fetchInstrumentsFromServer(short_code):
+def fetchInstrumentsFromServer(short_code, brokerHandler: BaseHandler):
     instrumentsList = []
     try:
-        brokerHandle = getBrokerLogin(short_code).getBrokerHandle()
         logging.info("Going to fetch instruments from server...")
-        instrumentsList = brokerHandle.instruments("NSE")
-        instrumentsListFnO = brokerHandle.instruments("NFO")
-        intrumentListBSE = brokerHandle.instruments("BSE")
-        instrumentsListBFO = brokerHandle.instruments("BFO")
+        instrumentsList = brokerHandler.instruments("NSE")
+        instrumentsListFnO = brokerHandler.instruments("NFO")
+        intrumentListBSE = brokerHandler.instruments("BSE")
+        instrumentsListBFO = brokerHandler.instruments("BFO")
         # Add FnO instrument list to the main list
         instrumentsList.extend(instrumentsListFnO)
         instrumentsList.extend(intrumentListBSE)
@@ -90,14 +90,13 @@ def fetchInstrumentsFromServer(short_code):
     return instrumentsList
 
 
-def fetchInstruments(short_code):
-    global instrumentsData
+def fetchInstruments(short_code, brokerHandler: BaseHandler):
     if short_code in instrumentsData:
         return instrumentsData[short_code]
 
     instrumentsList = loadInstruments(short_code)
     if len(instrumentsList) == 0 or shouldFetchFromServer(short_code) == True:
-        instrumentsList = fetchInstrumentsFromServer(short_code)
+        instrumentsList = fetchInstrumentsFromServer(short_code, brokerHandler)
         # Save instruments to file locally
         if len(instrumentsList) > 0:
             saveInstruments(short_code, instrumentsList)
@@ -109,7 +108,7 @@ def fetchInstruments(short_code):
 
     symbolToInstrumentMap[short_code] = {}
     tokenToInstrumentMap[short_code] = {}
-    getBrokerLogin(short_code).getBrokerHandle().instruments = instrumentsList
+    brokerHandler.instrumentsList = instrumentsList
 
     try:
         for isd in instrumentsList:
@@ -132,3 +131,11 @@ def getInstrumentDataBySymbol(short_code, tradingSymbol):
 
 def getInstrumentDataByToken(short_code, instrumentToken):
     return tokenToInstrumentMap[short_code][instrumentToken]
+
+
+def getEpoch(datetimeObj=None):
+    # This method converts given datetimeObj to epoch seconds
+    if datetimeObj == None:
+        datetimeObj = datetime.now()
+    epochSeconds = datetime.timestamp(datetimeObj)
+    return int(epochSeconds)  # converting double to long

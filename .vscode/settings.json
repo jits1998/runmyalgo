@@ -12,7 +12,7 @@
         ".vscode": true,
         "**/flask_session": true,
         ".gitignore": true,
-        ".mypy_cache": true
+        "**/.mypy_cache/**": true
     },
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",

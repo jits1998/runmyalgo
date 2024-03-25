@@ -13,15 +13,15 @@ from models import OrderStatus
 
 class ICICIHandler(BaseHandler):
 
-    def __init__(self, broker, config):
-        self.broker = broker
+    def __init__(self, brokerHandle, config):
+        self.brokerHandle = brokerHandle
         self.config = config
 
     def set_access_token(self, access_token):
-        self.broker.generate_session(session_token=access_token, api_secret=self.config["secret"])
+        self.brokerHandle.generate_session(session_token=access_token, api_secret=self.config["secret"])
 
     def margins(self):
-        margins = self.broker.get_margin(exchange_code="NFO")
+        margins = self.brokerHandle.get_margin(exchange_code="NFO")
 
         return margins
 
@@ -29,7 +29,7 @@ class ICICIHandler(BaseHandler):
         raise Exception("Method not to be called")
 
     def orders(self):
-        order_list = self.broker.get_order_list(
+        order_list = self.brokerHandle.get_order_list(
             exchange_code="NFO",
             from_date=datetime.datetime.now().isoformat()[:10] + "T05:30:00.000Z",
             to_date=datetime.datetime.now().isoformat()[:10] + "T05:30:00.000Z",
@@ -66,7 +66,7 @@ class ICICIHandler(BaseHandler):
             product_type = "futures"
             right = "Others"
 
-        return self.broker.get_quotes(
+        return self.brokerHandle.get_quotes(
             stock_code=isd["name"],
             exchange_code=isd["exchange"],
             expiry_date=isd["expiry"],

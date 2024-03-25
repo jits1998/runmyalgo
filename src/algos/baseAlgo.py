@@ -4,36 +4,46 @@ import threading
 import time
 
 import instruments
-from broker import brokers, load_broker_module
-from utils import getBrokerLogin, getTradeManager, getUserDetails
+from broker import BaseHandler, brokers, load_broker_module
+from core import TradeManager
+from models import UserDetails
+
+# from utils import getBrokerLogin, getTradeManager, getUserDetails
 
 # from Test import Test
 
 
-class BaseAlgo:
+class BaseAlgo(threading.Thread):
 
-    def __init__(self):
+    accessToken: str
+    short_code: str
+    userDetails: UserDetails
+    trademanager: TradeManager
+    brokerHandler: BaseHandler
+
+    def __init__(self, group=None, target=None, name=None, args=(), kwargs=None):
+        super(BaseAlgo, self).__init__(group=group, target=target, name=name)
+        (
+            self.accessToken,
+            self.short_code,
+            self.multiple,
+        ) = args
+        self.tradeManager = None
+        self.brokerHandler = None
         self.strategyConfig = {}
 
-    def startAlgo(self, accessToken, short_code, multiple=0):
-        if getTradeManager(short_code) is not None:
+    def run(self):
+        while True:
+            time.sleep(10)
+
+    def startAlgo(self):
+        if self.tradeManager is not None:
             logging.info("Algo has already started..")
             return
 
         logging.info("Starting Algo...")
 
-        if getBrokerLogin(short_code) is None:
-            userDetails = getUserDetails(short_code)
-            userDetails.start()
-            load_broker_module(userDetails.broker)
-            loginHandler: BaseLogin = brokers[userDetails.broker]["LoginHandler"](userDetails.__dict__)
-            loginHandler.login({})
-            userDetails.loginHandler = loginHandler
-            brokerLogin = getBrokerLogin(short_code)
-            brokerLogin.setAccessToken(accessToken)
-            brokerLogin.getBrokerHandle().set_access_token(accessToken)
-
-        instrumentsList = instruments.fetchInstruments(short_code)
+        instrumentsList = instruments.fetchInstruments(self.short_code, self.brokerHandler)
 
         if len(instrumentsList) == 0:
             # something is wrong. We need to inform the user
@@ -41,13 +51,7 @@ class BaseAlgo:
             return
 
         # start trade manager in a separate thread
-        tm = TradeManager(
-            name=short_code,
-            args=(
-                accessToken,
-                self,
-            ),
-        )
+        tm = TradeManager(self.short_code, self.accessToken)
         tm.start()
 
         # sleep for 2 seconds for TradeManager to get initialized
@@ -57,7 +61,8 @@ class BaseAlgo:
                 return
             time.sleep(2)
 
-        self.startStrategies(short_code, multiple)
+        self.startStra
+        tegies(short_code, multiple)
 
         logging.info("Algo started.")
 

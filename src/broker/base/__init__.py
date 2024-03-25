@@ -2,8 +2,6 @@ import logging
 from abc import abstractmethod
 from typing import Callable, Dict, Generic, List, Optional, TypeVar
 
-from core import Quote
-
 T = TypeVar("T")
 
 
@@ -11,6 +9,7 @@ class BaseHandler(Generic[T]):
 
     def __init__(self, broker: T) -> None:
         self.broker: T = broker
+        self.instrumentsList: List[Dict[str, str]] = []
 
     def set_access_token(self, accessToken) -> None:
         raise Exception("Method not to be called")
@@ -34,24 +33,29 @@ class BaseHandler(Generic[T]):
         return self.broker
 
 
-class BaseLogin(Generic[T]):
+class BaseLogin:
+
+    accessToken: Optional[str]
+    brokerHandler: Optional[BaseHandler]
 
     def __init__(self, userDetails: Dict[str, str]) -> None:
         self.userDetails = userDetails
         self.broker: str = userDetails["broker"]
-        self.accessToken: Optional[str] = None
-        self.brokerHandle: Optional[T] = None
+        self.accessToken = None
+        self.brokerHandler = None
 
     # Derived class should implement login function and return redirect url
     @abstractmethod
-    def login(self, args: dict) -> str:
+    def login(self, args: Dict) -> str:
         pass
 
-    def setBrokerHandle(self, brokerHandle: T) -> None:
-        self.brokerHandle = brokerHandle
+    def setBrokerHandler(self, brokerHandle: BaseHandler) -> None:
+        self.brokerHandler = brokerHandle
 
     def setAccessToken(self, accessToken: str) -> None:
         self.accessToken = accessToken
+        assert self.brokerHandler is not None
+        self.brokerHandler.set_access_token(accessToken)
 
     def getUserDetails(self) -> Dict[str, str]:
         return self.userDetails
@@ -59,8 +63,8 @@ class BaseLogin(Generic[T]):
     def getAccessToken(self) -> Optional[str]:
         return self.accessToken
 
-    def getBrokerHandle(self) -> Optional[T]:
-        return self.brokerHandle
+    def getBrokerHandler(self) -> Optional[BaseHandler]:
+        return self.brokerHandler
 
 
 class BaseOrderManager:
@@ -103,14 +107,14 @@ class BaseOrderManager:
 
 
 class BaseTicker:
-    def __init__(self, broker: str, short_code: str) -> None:
+    def __init__(self, short_code: str) -> None:
         self.short_code: str = short_code
-        self.broker: str = broker
+        self.broker: str
         self.brokerLogin: BaseLogin
         self.ticker = None
         self.tickListeners: List[Callable] = []
 
-    def startTicker(self) -> None:
+    def startTicker(self, appKey, accessToken) -> None:
         pass
 
     def stopTicker(self) -> None:

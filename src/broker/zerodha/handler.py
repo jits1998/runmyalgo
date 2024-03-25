@@ -7,27 +7,27 @@ from broker import BaseHandler
 
 class ZerodhaHandler(KiteConnect, BaseHandler):
 
-    def __init__(self, broker: KiteConnect, config) -> None:
-        self.broker: KiteConnect = broker
+    def __init__(self, brokerHandle: KiteConnect, config) -> None:
+        self.brokerHandle: KiteConnect = brokerHandle
         self.config = config
 
     def set_access_token(self, accessToken) -> None:
-        self.broker.set_access_token(accessToken)
+        self.brokerHandle.set_access_token(accessToken)
 
     def margins(self) -> list:
-        return self.broker.margins()
+        return self.brokerHandle.margins()
 
     def positions(self) -> list:
-        return self.broker.positions()
+        return self.brokerHandle.positions()
 
     def orders(self) -> list:
-        return self.broker.orders()
+        return self.brokerHandle.orders()
 
     def quote(self, key) -> Dict:
-        return self.broker.quote(key)
+        return self.brokerHandle.quote(key)
 
     def instruments(self, exchange) -> list:
-        return self.broker.instruments(exchange)
+        return self.brokerHandle.instruments(exchange)
 
     def getBrokerHandle(self) -> KiteConnect:
-        return self.broker
+        return self.brokerHandle

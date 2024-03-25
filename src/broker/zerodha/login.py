@@ -8,15 +8,15 @@ from broker.zerodha import ZerodhaHandler
 from config import getSystemConfig
 
 
-class ZerodhaLogin(KiteConnect, BaseLogin):
+class ZerodhaLogin(BaseLogin):
     def __init__(self, userDetails: Dict[str, str]):
-        BaseLogin.__init__(self, userDetails)
+        super().__init__(userDetails)
 
     def login(self, args):
         logging.info("==> ZerodhaLogin .args => %s", args)
         systemConfig = getSystemConfig()
         brokerHandle = KiteConnect(api_key=self.userDetails["key"])
-        self.setBrokerHandle(ZerodhaHandler(brokerHandle, self.userDetails))
+        self.setBrokerHandler(ZerodhaHandler(brokerHandle, self.userDetails))
         redirectUrl = None
         if "request_token" in args:
             requestToken = args["request_token"]
@@ -28,13 +28,10 @@ class ZerodhaLogin(KiteConnect, BaseLogin):
 
             accessToken = broker_session["access_token"]
             logging.info("Zerodha accessToken = %s", accessToken)
-            brokerHandle.set_access_token(accessToken)
+            # set broker handle and access token to the instance
+            self.setAccessToken(accessToken)
 
             logging.info("Zerodha Login successful. accessToken = %s", accessToken)
-
-            # set broker handle and access token to the instance
-
-            self.setAccessToken(accessToken)
 
             # redirect to home page with query param loggedIn=true
             homeUrl = systemConfig["homeUrl"] + "?loggedIn=true"

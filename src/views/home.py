@@ -1,13 +1,15 @@
 import importlib
+import threading
 from functools import wraps
-from typing import Callable
+from typing import Callable, Union
 
 from flask import abort, redirect, render_template, request, session
 
+from algos import BaseAlgo, getAlgo
 from app import flask_app as app
 from broker import BaseLogin, brokers, load_broker_module
-from models import UserDetails
-from utils import getBrokerLogin, getTradeManager, getUserDetails
+from config import getUserConfig
+from models.user import UserDetails
 
 
 @app.route("/me/<short_code>")
@@ -16,25 +18,34 @@ def home(short_code):
         session.clear()
         session["short_code"] = short_code
 
-    if session.get("access_token", None) is None and getTradeManager(short_code) is None:
+    if session.get("access_token", None) is None and getAlgo(short_code) is None:
         session["short_code"] = short_code
+        # special case of server restart and accessToken provided via query params
         if request.args.get("accessToken", None) is not None:
             session["access_token"] = request.args["accessToken"]
-            return render_template("index_algostarted_new.html")
+            userDetails = getUserDetails(session["short_code"])
+            _initiateAlgo(userDetails)
+            return render_template("main.html")
         return render_template("index.html", broker=getUserDetails(short_code).broker)
     else:
-        trademanager = getTradeManager(short_code)
-        brokerLogin = getBrokerLogin(short_code)
         userDetails = getUserDetails(short_code)
+        algo = getAlgo(short_code)
+
+        if algo is None:
+            algo = _initiateAlgo(userDetails)
+
+        trademanager = algo.tradeManager
+        brokerHandler = algo.brokerHandler
+
         return render_template(
             "main.html",
             strategies=trademanager.strategyToInstanceMap.values() if trademanager is not None else {},
             ltps=trademanager.symbolToCMPMap if trademanager is not None else {},
             algoStarted=True if trademanager is not None else False,
             isReady=True if trademanager is not None and trademanager.isReady else False,
-            margins=(brokerLogin.getBrokerHandle().margins() if brokerLogin is not None else {}),
-            positions=(brokerLogin.getBrokerHandle().positions() if brokerLogin is not None else {}),
-            orders=(brokerLogin.getBrokerHandle().orders() if brokerLogin is not None else {}),
+            # margins=(brokerHandler.margins() if brokerHandler is not None else {}),
+            # positions=(brokerHandler.positions() if brokerHandler is not None else {}),
+            # orders=(brokerHandler.orders() if brokerHandler is not None else {}),
             multiple=userDetails.multiple,
             short_code=short_code,
         )
@@ -52,37 +63,41 @@ def login(broker_name: str):
 
     if loginHandler.getAccessToken() is not None:
         session["access_token"] = loginHandler.accessToken
-        userDetails.start()
-        userDetails.loginHandler = loginHandler
+        x = _initiateAlgo(userDetails)
+        x.brokerHandler = loginHandler.getBrokerHandler()
 
     return redirect(redirectUrl, code=302)
 
 
+def _initiateAlgo(userDetails) -> BaseAlgo:
+    algoType = userDetails.algoType
+    algoConfigModule = importlib.import_module("algos")
+    algoConfigClass = getattr(algoConfigModule, algoType)
+    x = algoConfigClass(
+        name=session["short_code"],
+        args=(
+            session["access_token"],
+            session["short_code"],
+            userDetails.multiple,
+        ),
+    )
+    x.start()
+    return x
+
+
 @app.route("/apis/algo/start", methods=["POST"])
 def startAlgo():
-    if not getTradeManager(short_code=session["short_code"]):
-        # get User's Algo type
+    algo = getAlgo(session["short_code"])
+    if algo.brokerHandler is None:
         userDetails = getUserDetails(session["short_code"])
-        algoType = userDetails.algoType
-        algoConfigModule = importlib.import_module("algos")
-        algoConfigClass = getattr(algoConfigModule, algoType)
+        broker_name = userDetails.broker
+        load_broker_module(broker_name)
+        loginHandler: BaseLogin = brokers[broker_name]["LoginHandler"](userDetails.__dict__)
+        loginHandler.login({})
+        loginHandler.setAccessToken(session["access_token"])
+        algo.brokerHandler = loginHandler.brokerHandler
 
-        algoConfigClass().startAlgo(session["access_token"], session["short_code"], userDetails.multiple)
-
-        # start algo in a separate thread
-        x = threading.Thread(
-            target=algoConfigClass().startAlgo,
-            name="Algo",
-            args=(
-                session["access_token"],
-                session["short_code"],
-                getBrokerAppConfig(session["short_code"]).get("multiple", 1),
-            ),
-        )
-
-        x.start()
-        while x.is_alive():
-            time.sleep(1)
+    algo.startAlgo()
     systemConfig = getSystemConfig()
     homeUrl = systemConfig["homeUrl"] + "?algoStarted=true"
     logging.info("Sending redirect url %s in response", homeUrl)
@@ -102,3 +117,26 @@ def token_required(f: Callable):
         return f(trademanager, *args, **kwargs)
 
     return decorator
+
+
+def getUserDetails(short_code: str) -> UserDetails:
+    userConfig: dict = getUserConfig(short_code)
+
+    userDetails = UserDetails()
+    userDetails.short_code = short_code
+    userDetails.broker = userConfig["broker"]
+    userDetails.clientID = userConfig["clientID"]
+    userDetails.secret = userConfig["appSecret"]
+    userDetails.key = userConfig["appKey"]
+    userDetails.multiple = userConfig["multiple"]
+    userDetails.algoType = userConfig["algoType"]
+
+    return userDetails
+
+
+def getBrokerLogin(short_code: str) -> Union[BaseLogin, None]:
+    for t in threading.enumerate():
+        if t.getName() == short_code:
+            algo: BaseAlgo = t  # type: ignore
+            return algo.loginHandler
+    return None
