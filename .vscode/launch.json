@@ -11,7 +11,7 @@
             "module": "flask",
             "cwd": "${workspaceFolder}/src",
             "env": {
-                "FLASK_APP": "../app.py",
+                "FLASK_APP": "app.py",
                 "FLASK_DEBUG": "1"
             },
             "args": [
@@ -23,7 +23,8 @@
                 "0.0.0.0"
             ],
             "jinja": true,
-            "autoStartBrowser": false
+            "autoStartBrowser": false,
+            "justMyCode": false
         }
     ]
 }

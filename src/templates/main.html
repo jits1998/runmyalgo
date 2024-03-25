@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>{{short_code}} || </title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=0.9">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+  <link href="https://cdn.datatables.net/v/bs5/dt-1.13.8/datatables.min.css" rel="stylesheet">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    .table td, .table th {
+        padding-left: 0.25em!important;
+        padding-right: 0.25em!important;
+    }
+        /* ensures the increment/decrement arrows always display */
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button {
+      opacity: 1;
+    }
+    a.advance{
+      text-decoration: none;
+    }
+    a.collapsing {
+      display: none;
+    }
+    .exit {
+      display: none;
+    }
+  </style>
+  </style>
+  <script>
+    function clearAdv(){
+      $("input[name='trigger']").val(0);
+      $("input[name='sl']").val(0);
+      $("input[name='target']").val(0);
+    }
+
+    function updateAdv(price){
+      price = parseFloat(price)
+
+      direction = index = $("input[type=radio][name='direction']:checked").val();
+      dirMulti = -1
+      if (direction == "LONG"){
+        dirMulti = +1
+      }
+      $("input[name='trigger']").val(Math.round((price + dirMulti * 0.01 * price) * 100)/100);
+      $("input[name='sl']").val(Math.round((price - dirMulti * 0.1 * price ) * 100)/100);
+      $("input[name='target']").val(Math.round((price + dirMulti * 0.1 * price ) * 100)/100);
+    }
+    function updatePrice(){
+        index = $("input[type=radio][name='index']:checked").val();
+        strike = $("#strike").val();
+        type = $("input[type=radio][name='type']:checked").val();
+        price = metadata[index].quote[type][strike];
+        if(price){
+          price = parseFloat(price)
+          $("input[name='price']").val(price);
+          if($("div.advance").hasClass("show")){
+            updateAdv(price)
+          }
+        }else {
+          $("input[name='price']").val("")
+          clearAdv()
+        }
+      }
+      function showQuote(){
+        index = $("input[type=radio][name='index']:checked").val();
+        strike = $("#strike").val();
+        type = $("input[type=radio][name='type']:checked").val();
+        if (index){
+          if(metadata[index].quote[type][strike]){
+            updatePrice();
+          }else{
+            $.get("{{request.path}}/getQuote", { index: index, 
+                                                strike: strike,
+                                                type:type,
+                                                expiryDay: $("#expiryDay").val(),
+                                              }).done(function(data){
+                                                metadata[index].quote[type][strike]=data;
+                                                updatePrice();
+                                              });
+          }
+        }
+      }
+      directionChanged = function(){
+        showQuote()
+        direction = index = $("input[type=radio][name='direction']:checked").val();
+        if (direction == "LONG"){
+          $("#go1").addClass("btn-primary")
+          $("#go1").removeClass("btn-danger")
+        }else {
+          $("#go1").removeClass("btn-primary")
+          $("#go1").addClass("btn-danger")
+        }
+      }
+      startTimer = function(){
+        window.setInterval((function(){
+        var start = Date.now();
+        var textNode = document.createTextNode('0');
+        document.getElementById('seconds-counter').appendChild(textNode);
+        return function() {
+              textNode.data = Math.floor((Date.now()-start)/1000);
+              };
+          }()), 1000);
+      }
+      function resetTimer(){
+          $("#seconds-counter").html("")
+      }
+    $(function () {
+      $("title").html($("title").html() + $(".pnl").text())
+      $("#powermode").click(function(){
+          $("#powermode").remove();
+          $(".exit").show();
+      });
+      metadata = { 
+                  NIFTY : {
+                    ATM:0,
+                    round:50,
+                    lot:50,
+                    expiryDay:3,
+                    quote:{
+                      CE:{},
+                      PE:{}
+                    }
+                  },
+                  BANKNIFTY: {
+                    ATM: 0,
+                    round:100,
+                    lot:15,
+                    expiryDay:2,
+                    quote:{
+                      CE:{},
+                      PE:{}
+                    }
+                  },
+                  FINNIFTY:{
+                    ATM: 0,
+                    round:50,
+                    lot:40,
+                    expiryDay:1,
+                    quote:{
+                      CE:{},
+                      PE:{}
+                    }
+                  }
+                }
+      {% if isReady %}
+      clearAdv();
+
+      multiple={{multiple}};
+      
+      metadata.NIFTY.ATM=Math.round({{ltps["NIFTY 50"]}}/metadata.NIFTY.round)*metadata.NIFTY.round;
+      metadata.BANKNIFTY.ATM=Math.round({{ltps["NIFTY BANK"]}}/metadata.BANKNIFTY.round)*metadata.BANKNIFTY.round;
+      metadata.FINNIFTY.ATM=Math.round({{ltps["NIFTY FIN SERVICE"]}}/metadata.FINNIFTY.round)*metadata.FINNIFTY.round;
+      
+      $("input[type=radio][name='index']").on("change", function(){
+        selectedIndex = $("input[type=radio][name='index']:checked").val();
+        $("#expiryDay").val(metadata[selectedIndex].expiryDay);
+        $("#strike").val(metadata[selectedIndex].ATM).trigger('change');
+        $("#strike").attr('step',metadata[selectedIndex].round);
+        $("#strike").attr('min',metadata[selectedIndex].ATM - 10 * metadata[selectedIndex].round);
+        $("#strike").attr('max',metadata[selectedIndex].ATM + 10 * metadata[selectedIndex].round);
+        $("#qty").val(metadata[selectedIndex].lot*multiple);
+        $("#qty").attr('step',metadata[selectedIndex].lot);
+        $("#qty").attr('min',metadata[selectedIndex].lot);
+        $("#qty").attr('max',metadata[selectedIndex].lot * multiple * 10);
+      });
+      
+      getQuote = function(){
+        clearTimeout(metadata.tm);
+        metadata.tm = setTimeout( showQuote, 500);
+      };
+      $("#strike").on("change", getQuote);
+      $("input[type=radio][name='type']").on("change", getQuote);
+      $("div.advance").on('shown.bs.collapse', showQuote);
+      $("div.advance").on('hidden.bs.collapse', clearAdv);
+      $("input[type=radio][name='direction']").on("change", directionChanged);
+
+
+      {% endif %}
+      document.body.style.zoom="90%";
+      $('a[data-bs-toggle="tab"]').on('show.bs.tab', function(e) {
+        localStorage.setItem('activeTab', $(e.target).attr('href'));
+      });
+      var activeTab = localStorage.getItem('activeTab');
+      if(activeTab){
+        $('#sections a[href="' + activeTab + '"]').tab('show');
+      }else {
+        $('#sections a[href="#tabs-strategies"]').tab('show');
+      }
+      // if ($('#orders-table')[0].rows.length>1){
+        new DataTable('#orders-table',{
+          paging: false,
+          bInfo : false,
+        });
+      // }
+    });
+    function confirmExit(link, identity){
+      if (confirm ("Please confirm exiting "+identity)){
+          window.location.href=link;
+      }
+    }
+
+    {% if algoStarted %}
+    window.setInterval(function () { 
+      if(!$("#order").hasClass("show")){
+        document.location.reload(true); 
+      }
+    }, 15000);
+    {% endif %}
+    
+    function startAlgo() {
+      $('button').html('  Starting... <span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>').addClass('disabled');
+      var url = "/apis/algo/start"
+      var data = {};
+      $.post(url, {},
+        function (data, status, xhr) {
+          if (data.redirect) {
+            window.location.href = data.redirect;
+          } else {
+            alert('status: ' + status + ', data: ' + JSON.stringify(data));
+          }
+        },
+        'json'
+      );
+    }
+  </script>
+
+</head>
+<body class="p-2">
+    {% macro print_price (price) %}
+    {%if price> 0 %}
+    <b>{{"{:,.2f}".format(price)}}</b>
+    {% else %}
+    {{"{:,.2f}".format(price)}}
+    {% endif %}
+    {% endmacro %}
+    <div class="container-fluid font-monospace">
+        <div class="row justify-content-center">
+            <div class="col-xxl-7">
+    {% if algoStarted %}
+        {% if isReady %}
+        <div class="row bg-light">
+        <div class="row gx-0 ">
+          <div class = "card my-1">
+          <h7 class="text-center">Algo is running with {{multiple}}x <a href=".manual" class="collapse manual link-danger" data-bs-toggle="collapse" onclick="resetTimer()">Page not reloading (<span id="seconds-counter"></span>s)</a></h7>
+          </div>
+          </div>
+        <div class="row gx-0">
+          <div class="text-center col h6">{{strategies|length}} Strategies <span class="d-none d-md-inline">will be executed</span></div>
+          <div class="text-center col h6 d-none d-md-block">{% if session['access_token'] %}
+            Available Margin:: {{"{:,.2f}".format((
+                  margins['equity']['available']['collateral']
+                  + margins['equity']['available']['opening_balance']
+                  - margins['equity']['utilised']['debits'])/100000)}}
+                {% endif %}
+          </div>
+          <div class="text-center col d-none d-md-block">{{ltps["exchange_timestamp"].strftime('%A, %b %d %Y %X')}}</div>
+          <div class="text-center col d-md-none">{{ltps["exchange_timestamp"].strftime('%a, %b %d %H:%M')}}</div>
+          
+      </div>
+        
+        <div class="row gx-0">
+            <p class="col focus-ring col-md-3 col-6 text-center border bg-light py-1 my-1"><strong>Nifty :: {{"{:,.2f}".format(ltps["NIFTY 50"])}}</strong></p>
+            <p class="col focus-ring col-md-3 col-6 text-center border bg-light py-1 my-1"><strong>Bank Nifty :: {{"{:,.2f}".format(ltps["NIFTY BANK"])}} </strong></p>
+            <p class="col focus-ring col-md-3 col-6 text-center border bg-light py-1 my-1"><strong>Fin Nifty :: {{"{:,.2f}".format(ltps["NIFTY FIN SERVICE"])}} </strong></p>
+            <p class="col focus-ring col-md-3 col-6 text-center border bg-light py-1 my-1"><strong>VIX :: {{ltps["INDIA VIX"]}} </strong></p>
+        </div>
+            
+        <div class="row gx-0">
+            <ul class="nav nav-tabs nav-underline nav-fill px-0 gap-0" id="sections">
+                <li class="nav-item"><a class="nav-link " data-bs-toggle="tab"  href="#tabs-strategies">Strategies</a></li>
+                <li class="nav-item"><a class="nav-link " data-bs-toggle="tab"  href="#tabs-orders">Open Orders</a></li>
+                <li class="nav-item"><a class="nav-link " data-bs-toggle="tab"  href="#tabs-positions">MIS Positions</a></li>
+            </ul>
+        </div>
+      </div>
+        {% endif %}
+            
+            <div class="row tab-content">
+                <div id="tabs-strategies" class="tab-pane px-0 py-1">
+                    {% set pnls = [] %}
+                    <table class="table border">
+                    {% for strategy in strategies %}
+                    
+                        <tr class="table-light">
+                            <th
+                                style="{% if not strategy.isEnabled() %} font-weight:normal;font-style: italic;{% endif %}"
+                                class="text-start px-1"
+                                colspan="8"> {{strategy.getName()}} :: {{strategy.getLots()}}x ==>
+                                {{"%.2f"|format(strategy.strategyTarget * strategy.getLots())}} @ {{"%.2f"|format(strategy.strategySL
+                                * strategy.getLots())}} 
+                            </th>
+                            <th class="text-end">
+                              {% if strategy.isEnabled() and session['access_token'] %}
+                                <a href="#" onclick="confirmExit('{{ request.path }}/strategy/exit/{{strategy.getName()}}', '{{strategy.getName()}}')"" class="exit">Exit Strategy</a>
+                              {% endif %}
+                            </th>
+                          </tr>
+                  {% for trade in strategy.trades| sort (attribute = startTimestamp ) %}
+                    {% if not trade.tradeState in ['disabled']%}
+                        <tr id="{{trade.tradeID}}" class="border-0 border-bottom {% if trade.exit == 0 and not trade.tradeState in ['cancelled'] %}table-active{%else%}table-default{%endif%}">
+                        <td class="text-center border-0 border-end border-secondary-subtle" >{{trade.startTimestamp|ctime}}</td>
+                        <td class="border-0 border-end border-secondary-subtle">{{trade.tradingSymbol}}</td>
+                        <td class="text-center border-0 border-end border-secondary-subtle d-none d-md-table-cell">{{trade.direction}}</td>
+                        <td class="text-end border-0 border-end border-secondary-subtle d-none d-md-table-cell">{{trade.filledQty}}</td>
+                        <td class="text-end border-0 border-end border-secondary-subtle d-md-none" colspan="2"><b>{{ "-" if trade.direction =="SHORT" else "+"}}</b>{{trade.filledQty}}</td> 
+                        <td class="text-end border-0 border-end border-secondary-subtle">{{"%.2f"|format(trade.entry)}}</td>
+                      {% if trade.exit == 0 and not trade.tradeState in ['cancelled'] %}
+                        <td class="text-end border-0">{{"%.2f"|format(trade.cmp)}}</td>
+                        <td class="text-end border-0 border-start border-secondary-subtle text-end">{{"{:,.2f}".format(trade.pnl)}}</td>
+                        <td class="text-end border-0 border-start border-secondary-subtle text-end d-none d-md-table-cell""><b>{{ "" if trade.entry> 0 else "Open"}}</b></td>
+                        <td class="border-0 text-center">{% if session['access_token'] %}<a href="#" onclick="confirmExit('{{ request.path }}/trade/exit/{{trade.tradeID}}','{{trade.tradingSymbol}}')" class="exit">Exit Trade</a>{% endif %}</td>
+                      {% else %}
+                        <td class="border-0 text-end ">{{"%.2f"|format(trade.exit)}}</td>
+                        <td class="border-0 text-end  border-start border-secondary-subtle text-end ">{{"{:,.2f}".format(trade.pnl)}}</td>
+                        <td class="border-0 border-start border-secondary-subtle text-center d-none d-md-table-cell">{{trade.exitReason or trade.tradeState}}</td>
+                        <td class="border-0 border-start border-secondary-subtle text-center">{{trade.endTimestamp|ctime or ""}}</td>
+                      {% endif %}
+                        </tr>
+                    {% endif %}
+                  {% endfor %}
+                  {% if strategy.getName()=="ManualStrategy" and strategy.isEnabled() and session['access_token'] %}
+                          <tr id="order" class="collapse manual">
+                            <form action="{{ request.path }}/trade/enter" method="post" >
+                              <input type="hidden" id="expiryDay" name="expiryDay" value=""/>
+                            <td colspan="9" class="align-middle">
+                          
+                            <div class="row">
+                              <div class="col-auto">
+                                <div class="row gx-1 gy-1 px-1 text-center">
+                              <div class="btn-group col-auto" role="group">
+                                  <input type="radio" class="btn-check" name="direction" value="LONG" id="BUY" autocomplete="off" checked>
+                                  <label class="btn btn-outline-primary" for="BUY">BUY</label>
+                                  <input type="radio" class="btn-check" name="direction" value="SHORT" id="SELL" autocomplete="off" >
+                                  <label class="btn btn-outline-danger" for="SELL">SELL</label>
+                              </div><div class="btn-group col-auto border border-dark px-0" role="group">
+                                <span class="input-group-text border-0 bg-light border-end d-sm-none d-md-block rounded-0 rounded-start">Qty</span>
+                                <input type="number" class="form-control border-0 px-1" name="qty" id="qty" placeholder="Qty" value="15"  min="15" max="1000" step="15" required/> 
+                              </div>
+                               <div class="btn-group col-auto" role="group">
+                                  <input type="radio" class="btn-check" name="index" value="NIFTY"  id="nifty" autocomplete="off" required>
+                                  <label class="btn btn-outline-secondary" for="nifty">Nifty</label>
+                                  <input type="radio" class="btn-check" name="index" value="BANKNIFTY" id="banknifty" autocomplete="off" required>
+                                  <label class="btn btn-outline-secondary" for="banknifty">BankNifty</label>
+                                  <input type="radio" class="btn-check" name="index" value="FINNIFTY"  id="finnifty" autocomplete="off" required>
+                                  <label class="btn btn-outline-secondary" for="finnifty">Fin Nifty</label>
+                                </div>
+                                <div class="btn-group col-auto">
+                                  <input type="number" class="form-control px-2 border border-info" style="width: 100px" name="strike" id="strike" placeholder="Select Index" min="40000" max="50000" value="" step="100" required/> 
+                                </div>
+                                <div class="btn-group col-auto" role="group">
+                                  <input type="radio" class="btn-check" name="type" value="CE" id="CE" autocomplete="off" checked>
+                                  <label class="btn btn-outline-info" for="CE">CE</label>
+                                  <input type="radio" class="btn-check" name="type" value="PE" id="PE" autocomplete="off" >
+                                  <label class="btn btn-outline-warning" for="PE">PE</label>
+                                </div>
+                                <div class="btn-group col-auto border border-dark px-0">
+                                  <span class="input-group-text border-0 border-end bg-light d-sm-none d-md-block px-1 rounded-0 rounded-start">for &#8377;</span>
+                                  <input type="number" class="form-control form-control border-0 px-1" name="price" placeholder="Strike" min="0.05" max="1000" value="4.45" step="0.05" required/> 
+                                </div>
+                              </div>
+                              <div class="col-12 collapse advance py-1 text-center">
+                                <div class="btn-group invisible col-auto border border-dark" role="group">
+                                  <select class="form-select">
+                                    <option value="0">Weekly</option>
+                                    <option value="1">Next Weekly</option>
+                                    <option value="m">Monthly</option>
+                                  </select>
+                                </div>
+                                <div class=" btn-group col-auto border border-primary"  role="group">
+                                  <span class="input-group-text border-0 bg-light rounded-0 rounded-start border-end">Trigger</span>
+                                  <input type="number" class="form-control border-0" name="trigger" placeholder="Strike" value="45.45"  min="0" max="1000" step="0.05" required/> 
+                                </div>
+                                <div class=" btn-group col-auto border border-danger"  role="group">
+                                  <span class="input-group-text border-0 bg-light rounded-0 rounded-start border-end">SL</span>
+                                  <input type="number" class="form-control border-0" name="sl" placeholder="Strike" value="4.45"  min="0" max="1000" step="0.05" required/> 
+                                </div>
+                                <div class=" btn-group col-auto border border-success"  role="group">
+                                  <span class="input-group-text border-0 bg-light border-end rounded-0 rounded-start">Target</span>
+                                  <input type="number" class="form-control border-0" name="target" placeholder="Strike" value="45.45" min="0" max="1000" step="0.05" required/>
+                                </div>
+                              </div>
+                            </div> 
+                            <div class="col-1 text-start px-0">
+                                <input id="go1" type="submit" class="btn btn-primary" value="Go"/>
+                                <a data-bs-toggle="collapse" href=".advance" class="advance collapse show">
+                                  <i class="bi bi-chevron-double-down" role="button"></i>
+                                </a>
+                                <a data-bs-toggle="collapse" href=".advance" class="advance collapse">
+                                  <i class="bi bi-chevron-double-up" role="button"></i>
+                                </a>
+                            </div>
+                            
+                            </div>
+                            
+                          </form>
+                          </td>
+                          </tr>
+                  {% endif %}
+                        <tr>
+                          <td colspan="6" class="text-end">Total :: </td>
+                          <td colspan="1" class="text-end">{{ print_price (strategy.trades | sum(attribute='pnl')) }}</td>
+                          <td colspan="2" class="text-end collapse manual show">
+                            {% if strategy.getName()=="ManualStrategy" and strategy.isEnabled() and session['access_token'] %}
+                            <a href=".manual" class="collapse show manual" data-bs-toggle="collapse" onclick="startTimer()">Enter Manual Order</a>
+                            {% endif %}
+                          </td>
+                        </tr>
+        
+                    
+                    {% if pnls.append(strategy.trades | sum(attribute='pnl')) %}{% endif %}
+                    {% endfor %}
+                    {% if strategies|length > 0 %}
+                    <tr><td colspan="7" class="text-end">
+                    Overall Total:<span class="pnl">{{ print_price (pnls | sum) }}</span>
+                    </td>
+                    <td colspan="2"></td>
+                    </tr>
+                    {% endif %}
+                    </table>
+                    {% if session['access_token'] and strategies|length > 0 %}
+                        <div class="text-center"><a href="#" id="powermode">Enable Power mode</a></div>
+                    {% endif %}
+                </div>
+                <div id="tabs-orders" class="tab-pane px-0 py-1">
+                    <table class="table border px-0 py-1" id="orders-table">
+                      <thead style="text-align: left;">
+                        <th>Tag</th>
+                        <th style="min-width: 150px;">Status</th>
+                        <th>Symbol</th>
+                        <th>Type</th>
+                        <th>Direction</td>
+                        <th class="text-center">Pending/Total</th>
+                        <th>LTP</th>
+                        <th class="text-center">Price/Trigger</th>
+                        
+                      </thead>
+                    {% for order in orders %}
+                    {% if order.status not in ['COMPLETE','CANCELLED'] %}
+                    <tr>
+                      <!--{'placed_by': 'OZ5207', 'order_id': '240120602114910', 'exchange_order_id': '1700000139686394', 
+                        'parent_order_id': None, 'status': 'TRIGGER PENDING', 'status_message': None, 'status_message_raw': None, 
+                        'order_timestamp': datetime.datetime(2024, 1, 20, 13, 35, 5), 'exchange_update_timestamp': '2024-01-20 13:35:05', 
+                        'exchange_timestamp': datetime.datetime(2024, 1, 20, 13, 35, 5), 'variety': 'regular', 'modified': False,
+                         'exchange': 'NFO', 'tradingsymbol': 'BANKNIFTY24JAN45800PE', 'instrument_token': 14285826, 'order_type': 'SL', 
+                         'transaction_type': 'BUY', 'validity': 'DAY', 'validity_ttl': 0, 'product': 'MIS', 'quantity': 15, 
+                         'disclosed_quantity': 0, 'price': 427.05, 'trigger_price': 422.8, 'average_price': 0, 'filled_quantity': 0, 
+                         'pending_quantity': 15, 'cancelled_quantity': 0, 'market_protection': 0, 'meta': {}, 'tag': None, 
+                         'guid': '49765X7sHtMj13hm8U'}-->
+                      <td>{{order.tag}}</td>
+                      <td>{{order.status}}</td>
+                      <td>{{order.tradingsymbol}}</td>
+                      <td>{{order.order_type}}</td>
+                      <td>{{order.transaction_type}}</td>
+                      <td class="text-center">{{order.pending_quantity}}/{{order.quantity}}</td>
+                      <td>{{ltps.get(order.tradingsymbol, "Unknown")}}</td>
+                      <td class="text-center">{{order.price}}/{{order.trigger_price}}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                  </table>
+                </div>
+                <div id="tabs-positions" class="tab-pane px-0 py-1">
+                <table class="table border">
+                  <thead style="text-align: left;"><th>Symbol</td>
+                    <!-- <th>Brought Fwd</th> -->
+                    <th class="text-center">Net</th>
+                    <!-- <th class="text-end">PnL</th> -->
+                  </thead>
+                {% for position in positions["day"] %}
+                    {% if position['product']== 'MIS'%}
+                    <tr>
+                      <!--
+  {'tradingsymbol': 'BANKNIFTY24JAN51200CE', 'exchange': 'NFO', 'instrument_token': 10128386, 'product': 'MIS', 
+  'quantity': -15, 'overnight_quantity': 0, 'multiplier': 1, 'average_price': 4.7, 'close_price': 0, 
+  'last_price': 5.25, 'value': 68.25, 'pnl': -10.5, 'm2m': -10.5, 'unrealised': -10.5, 'realised': 0, 
+  'buy_quantity': 15, 'buy_price': 4.85, 'buy_value': 72.75, 'buy_m2m': 72.75, 'sell_quantity': 30, 
+  'sell_price': 4.7, 'sell_value': 141, 'sell_m2m': 141, 'day_buy_quantity': 15, 'day_buy_price': 4.85, 
+  'day_buy_value': 72.75, 'day_sell_quantity': 30, 'day_sell_price': 4.7, 'day_sell_value': 141}-->
+                   <td>{{position["tradingsymbol"]}}</td>
+                   <!-- <td>{{position["overnight_quantity"]}}</td> -->
+                   <td class="text-center">{{position["quantity"]}}</td>
+                   <!-- <td class="text-end">{{"{:,.2f}".format(position["pnl"])}}</td> -->
+                  </tr>
+                  {%endif%}
+                {% endfor %}
+                </table>
+                </div>
+                
+            </div>
+        </div>
+        </div>
+    </div>
+    {% else %}
+        {% if session['access_token'] %}
+        <div class="row">
+            <div class="card border-0">
+                <div class="text-center card-body">
+                    <button type="button" class="btn btn-primary" onClick="startAlgo()">Start Algo</button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
+    </div>
+    <script>
+    </script>
+</body>
+</html>
+
