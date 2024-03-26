@@ -4,4 +4,4 @@ cachelib
 kiteconnect
 breeze_connect @ git+https://github.com/jits1998/Breeze-Python-SDK@main
 python-dotenv
-types-python-dateutil
+psycopg2

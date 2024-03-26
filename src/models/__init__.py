@@ -56,3 +56,25 @@ class Segment(Enum):
     FNO = "FNO"
     CURRENCY = "CURRENCY"
     COMMADITY = "COMMADITY"
+
+
+class TradeExitReason(Enum):
+    SL_HIT = "SL HIT"
+    TRAIL_SL_HIT = "TRAIL SL HIT"
+    TARGET_HIT = "TARGET HIT"
+    SQUARE_OFF = "SQUARE OFF"
+    SL_CANCELLED = "SL CANCELLED"
+    TARGET_CANCELLED = "TARGET CANCELLED"
+    STRATEGY_SL_HIT = "STGY SL HIT"
+    STRATEGY_TRAIL_SL_HIT = "STGY TRAIL SL HIT"
+    STRATEGY_TARGET_HIT = "STGY TARGET HIT"
+    TRADE_FAILED = "TRADE FAILED"
+    MANUAL_EXIT = "MANUAL EXIT"
+
+
+class TradeState(Enum):
+    CREATED = "created"  # Trade created but not yet order placed, might have not triggered
+    ACTIVE = "active"  # order placed and trade is active
+    COMPLETED = "completed"  # completed when exits due to SL/Target/SquareOff
+    CANCELLED = "cancelled"  # cancelled/rejected comes under this state only
+    DISABLED = "disabled"  # disable trade if not triggered within the time limits or for any other reason

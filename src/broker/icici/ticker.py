@@ -5,10 +5,12 @@ import socketio  # type: ignore[import-untyped]
 from broker import BaseTicker
 from models import TickData
 
+from instruments import getInstrumentDataByToken, getInstrumentDataBySymbol
+
 
 class ICICITicker(BaseTicker):
-    def __init__(self, short_code):
-        super().__init__(short_code)
+    def __init__(self, short_code, brokerHandler):
+        super().__init__(short_code, brokerHandler)
 
     def startTicker(self, appKey, accessToken):
         if accessToken == None:
@@ -17,7 +19,7 @@ class ICICITicker(BaseTicker):
 
         # self.brokerLogin.getBrokerHandle().broker.
 
-        ticker = self.brokerLogin.getBrokerHandler().broker
+        ticker = self.brokerHandler.broker
 
         logging.info("ICICITicker: Going to connect..")
         self.ticker = ticker
@@ -28,7 +30,7 @@ class ICICITicker(BaseTicker):
             def on_ticks(bTick):
                 # convert broker specific Ticks to our system specific Ticks (models.TickData) and pass to super class function
                 ticks = []
-                isd = Instruments.getInstrumentDataByToken(self.short_code, bTick["symbol"][4:])
+                isd = getInstrumentDataByToken(self.short_code, bTick["symbol"][4:])
                 tradingSymbol = isd["tradingsymbol"]
                 tick = TickData(tradingSymbol)
                 tick.lastTradedPrice = bTick["last"]
@@ -64,7 +66,7 @@ class ICICITicker(BaseTicker):
         # breeze.subscribe_feeds(stock_token="1.1!500780")
         tokens = []
         for symbol in symbols:
-            isd = Instruments.getInstrumentDataBySymbol(self.short_code, symbol)
+            isd = getInstrumentDataBySymbol(self.short_code, symbol)
             token = isd["instrument_token"]
             logging.debug("ICICITicker registerSymbol: %s token = %s", symbol, token)
             print(self.ticker.subscribe_feeds(stock_token="4.1!" + token))
@@ -75,7 +77,7 @@ class ICICITicker(BaseTicker):
     def unregisterSymbols(self, symbols):
         tokens = []
         for symbol in symbols:
-            isd = Instruments.getInstrumentDataBySymbol(self.short_code, symbol)
+            isd = getInstrumentDataBySymbol(self.short_code, symbol)
             token = isd["instrument_token"]
             logging.debug("ICICITicker unregisterSymbols: %s token = %s", symbol, token)
             tokens.append(token)

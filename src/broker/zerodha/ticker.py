@@ -4,6 +4,7 @@ import time
 from kiteconnect import KiteTicker  # type: ignore[import-untyped]
 
 from broker import BaseTicker
+from instruments import getInstrumentDataBySymbol, getInstrumentDataByToken
 from models import TickData
 
 
@@ -41,7 +42,7 @@ class ZerodhaTicker(BaseTicker):
     def registerSymbols(self, symbols, mode=KiteTicker.MODE_QUOTE):
         tokens = []
         for symbol in symbols:
-            isd = Instruments.getInstrumentDataBySymbol(self.short_code, symbol)
+            isd = getInstrumentDataBySymbol(self.short_code, symbol)
             token = isd["instrument_token"]
             logging.debug("ZerodhaTicker registerSymbol: %s token = %s", symbol, token)
             tokens.append(token)
@@ -53,7 +54,7 @@ class ZerodhaTicker(BaseTicker):
     def unregisterSymbols(self, symbols):
         tokens = []
         for symbol in symbols:
-            isd = Instruments.getInstrumentDataBySymbol(self.short_code, symbol)
+            isd = getInstrumentDataBySymbol(self.short_code, symbol)
             token = isd["instrument_token"]
             logging.debug("ZerodhaTicker unregisterSymbols: %s token = %s", symbol, token)
             tokens.append(token)
@@ -65,7 +66,7 @@ class ZerodhaTicker(BaseTicker):
         # convert broker specific Ticks to our system specific Ticks (models.TickData) and pass to super class function
         ticks = []
         for bTick in brokerTicks:
-            isd = Instruments.getInstrumentDataByToken(self.short_code, bTick["instrument_token"])
+            isd = getInstrumentDataByToken(self.short_code, bTick["instrument_token"])
             tradingSymbol = isd["tradingsymbol"]
             tick = TickData(tradingSymbol)
             tick.lastTradedPrice = bTick["last_price"]

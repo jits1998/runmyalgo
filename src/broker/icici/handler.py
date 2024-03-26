@@ -14,6 +14,7 @@ from models import OrderStatus
 class ICICIHandler(BaseHandler):
 
     def __init__(self, brokerHandle, config):
+        super().__init__(brokerHandle)
         self.brokerHandle = brokerHandle
         self.config = config
 

@@ -107,10 +107,10 @@ class BaseOrderManager:
 
 
 class BaseTicker:
-    def __init__(self, short_code: str) -> None:
+    def __init__(self, short_code: str, brokerHandler: BaseHandler) -> None:
         self.short_code: str = short_code
         self.broker: str
-        self.brokerLogin: BaseLogin
+        self.brokerHandler: BaseHandler = brokerHandler
         self.ticker = None
         self.tickListeners: List[Callable] = []
 

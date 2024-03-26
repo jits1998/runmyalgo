@@ -1,4 +1,6 @@
 import importlib
+import json
+import logging
 import threading
 from functools import wraps
 from typing import Callable, Union
@@ -10,6 +12,7 @@ from app import flask_app as app
 from broker import BaseLogin, brokers, load_broker_module
 from config import getUserConfig
 from models.user import UserDetails
+from utils import getUserDetails
 
 
 @app.route("/me/<short_code>")
@@ -98,7 +101,7 @@ def startAlgo():
         algo.brokerHandler = loginHandler.brokerHandler
 
     algo.startAlgo()
-    systemConfig = getSystemConfig()
+    systemConfig = app.getSystemConfig()
     homeUrl = systemConfig["homeUrl"] + "?algoStarted=true"
     logging.info("Sending redirect url %s in response", homeUrl)
     respData = {"redirect": homeUrl}
@@ -110,28 +113,13 @@ def token_required(f: Callable):
     @wraps(f)
     def decorator(*args, **kwargs):
         short_code = kwargs["short_code"]
-        trademanager = getTradeManager(short_code)
+        trademanager = getAlgo(short_code).tradeManager
         # ensure the jwt-token is passed with the headers
         if not session.get("short_code", None) == short_code or session.get("access_token", None) is None or trademanager is None:
             abort(404)
         return f(trademanager, *args, **kwargs)
 
     return decorator
-
-
-def getUserDetails(short_code: str) -> UserDetails:
-    userConfig: dict = getUserConfig(short_code)
-
-    userDetails = UserDetails()
-    userDetails.short_code = short_code
-    userDetails.broker = userConfig["broker"]
-    userDetails.clientID = userConfig["clientID"]
-    userDetails.secret = userConfig["appSecret"]
-    userDetails.key = userConfig["appKey"]
-    userDetails.multiple = userConfig["multiple"]
-    userDetails.algoType = userConfig["algoType"]
-
-    return userDetails
 
 
 def getBrokerLogin(short_code: str) -> Union[BaseLogin, None]:

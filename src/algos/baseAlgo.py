@@ -5,8 +5,9 @@ import time
 
 import instruments
 from broker import BaseHandler, brokers, load_broker_module
-from core import TradeManager
+from core.tradeManager import TradeManager
 from models import UserDetails
+from utils import findNumberOfDaysBeforeWeeklyExpiryDay, isTodayWeeklyExpiryDay
 
 # from utils import getBrokerLogin, getTradeManager, getUserDetails
 
@@ -51,18 +52,17 @@ class BaseAlgo(threading.Thread):
             return
 
         # start trade manager in a separate thread
-        tm = TradeManager(self.short_code, self.accessToken)
-        tm.start()
+        tm = TradeManager(self.short_code, self.accessToken, self.brokerHandler)
+        tm.run  # breaking here to move to async mode
 
         # sleep for 2 seconds for TradeManager to get initialized
-        while not Utils.getTradeManager(short_code).isReady:
+        while not tm.isReady:
             if not tm.is_alive():
                 logging.info("Ending Algo...")
                 return
             time.sleep(2)
 
-        self.startStra
-        tegies(short_code, multiple)
+        self.startStrategies(self.short_code, self.multiple)
 
         logging.info("Algo started.")
 
@@ -70,28 +70,27 @@ class BaseAlgo(threading.Thread):
         pass
 
     def startStrategy(self, strategy, short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
-        # threading.Thread(target=FN_SBT_Expiry(short_code).run, name=short_code + "_" + FN_SBT_Expiry.getInstance(short_code).getName()).start()
-
-        threading.Thread(target=strategy(short_code, multiple).run, name=short_code + "_" + strategy.getInstance(short_code).getName()).start()
-
-        self.strategyConfig[strategy.getInstance(short_code).getName()] = run
+        strategyInstance = strategy(short_code, multiple)
+        self.tradeManager.registerStrategy(strategyInstance)
+        strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
+        threading.Thread(target=strategyInstance.run, name=short_code + "_" + strategyInstance.getName()).start()
+        self.strategyConfig[strategyInstance.getName()] = run
 
     def startTimedStrategy(self, strategy, short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None):
-
         strategyInstance = strategy(short_code, multiple, startTimestamp=startTimestamp)
-
+        self.tradeManager.registerStrategy(strategyInstance)
+        strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
         threading.Thread(target=strategyInstance.run, name=short_code + "_" + strategyInstance.getName()).start()
-
         self.strategyConfig[strategyInstance.getName()] = run
 
     def getLots(self, strategyName, symbol, expiryDay):
 
         strategyLots = self.strategyConfig.get(strategyName, [0, -1, -1, -1, -1, -1, 0, 0, 0, 0])
 
-        if Utils.isTodayWeeklyExpiryDay(symbol, expiryDay):
+        if isTodayWeeklyExpiryDay(symbol, expiryDay):
             return strategyLots[0]
 
-        noOfDaysBeforeExpiry = Utils.findNumberOfDaysBeforeWeeklyExpiryDay(symbol, expiryDay)
+        noOfDaysBeforeExpiry = findNumberOfDaysBeforeWeeklyExpiryDay(symbol, expiryDay)
         if strategyLots[-noOfDaysBeforeExpiry] > 0:
             return strategyLots[-noOfDaysBeforeExpiry]
 

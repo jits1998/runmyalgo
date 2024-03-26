@@ -10,6 +10,7 @@ from config import getServerConfig
 instrumentsData: Dict[str, Dict] = {}
 symbolToInstrumentMap: Dict[str, Dict[str, str]] = {}
 tokenToInstrumentMap: Dict[str, Dict[str, str]] = {}
+symbolToCMPMap: Dict[str, Dict[str, float]] = {}
 
 
 def getTimestampsData(short_code):
@@ -91,6 +92,7 @@ def fetchInstrumentsFromServer(short_code, brokerHandler: BaseHandler):
 
 
 def fetchInstruments(short_code, brokerHandler: BaseHandler):
+    symbolToCMPMap[short_code] = {}
     if short_code in instrumentsData:
         return instrumentsData[short_code]
 
