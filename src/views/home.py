@@ -11,7 +11,6 @@ from algos import BaseAlgo, getAlgo
 from app import flask_app as app
 from app import systemConfig
 from broker import BaseLogin, brokers, load_broker_module
-from models.user import UserDetails
 from utils import getUserDetails
 
 
@@ -66,8 +65,8 @@ def login(broker_name: str):
 
     if loginHandler.getAccessToken() is not None:
         session["access_token"] = loginHandler.accessToken
-        x = _initiateAlgo(userDetails)
-        x.brokerHandler = loginHandler.getBrokerHandler()
+        algo = _initiateAlgo(userDetails)
+        algo.brokerHandler = loginHandler.getBrokerHandler()
 
     return redirect(redirectUrl, code=302)
 
@@ -76,7 +75,7 @@ def _initiateAlgo(userDetails) -> BaseAlgo:
     algoType = userDetails.algoType
     algoConfigModule = importlib.import_module("algos")
     algoConfigClass = getattr(algoConfigModule, algoType)
-    x = algoConfigClass(
+    algo = algoConfigClass(
         name=session["short_code"],
         args=(
             session["access_token"],
@@ -84,8 +83,8 @@ def _initiateAlgo(userDetails) -> BaseAlgo:
             userDetails.multiple,
         ),
     )
-    x.start()
-    return x
+    algo.start()
+    return algo
 
 
 @app.route("/apis/algo/start", methods=["POST"])

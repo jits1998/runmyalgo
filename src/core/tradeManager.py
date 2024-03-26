@@ -8,7 +8,7 @@ from datetime import datetime
 from json import JSONEncoder
 from typing import Any, Dict
 
-import psycopg2  # type: ignore[import-untyped]
+import psycopg2
 
 from broker import BaseHandler, BaseTicker, brokers
 from config import getServerConfig
@@ -44,6 +44,7 @@ class TradeManager:
         self.short_code = short_code
         self.access_token = access_token
         self.symbolToCMPMap = cmp[short_code]
+        self.orderQueue: asyncio.Queue = asyncio.Queue()
         serverConfig = getServerConfig()
         tradesDir = os.path.join(serverConfig["deployDir"], "trades")
         self.intradayTradesDir = os.path.join(tradesDir, getTodayDateStr())
@@ -96,6 +97,11 @@ class TradeManager:
             now = datetime.now()
             waitSeconds = 5 - (now.second % 5)
             asyncio.sleep(waitSeconds)
+            
+    def registerStrategy(self, strategyInstance):
+        self.strategyToInstanceMap[strategyInstance.getName()] = strategyInstance
+        strategyInstance.strategyData = self.strategiesData.get(strategyInstance.getName(), None)
+        strategyInstance.orderQueue = self.orderQueue
 
     def loadAllTradesFromFile(self):
         tradesFilepath = self.getTradesFilepath()
@@ -118,7 +124,7 @@ class TradeManager:
     def loadAllStrategiesFromFile(self):
         strategiesFilePath = self.getStrategiesFilepath()
         if os.path.exists(strategiesFilePath) == False:
-            logging.warn("TradeManager: loadAllTradesFromFile() Trades Filepath %s does not exist", strategiesFilePath)
+            logging.warn("TradeManager: loadAllStrategiesFromFile() STrategies Filepath %s does not exist", strategiesFilePath)
             return
         sFile = open(strategiesFilePath, "r")
         self.strategiesData = json.loads(sFile.read())

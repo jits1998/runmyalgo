@@ -13,7 +13,7 @@ symbolToInstrumentMap: Dict[str, Dict[str, str]] = {}
 tokenToInstrumentMap: Dict[str, Dict[str, str]] = {}
 symbolToCMPMap: Dict[str, Dict[str, float]] = {}
 
-def getCMP(tradingSymbol, short_code) -> float:
+def getCMP(short_code, tradingSymbol) -> float:
     return symbolToCMPMap[short_code][tradingSymbol]
 
 def getTimestampsData(short_code):

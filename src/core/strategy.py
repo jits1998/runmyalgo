@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import math
 import time
@@ -7,7 +8,7 @@ from typing import List
 
 from broker.base import BaseHandler
 from core import Quote
-from instruments import getInstrumentDataBySymbol, symbolToCMPMap
+from instruments import getCMP, getInstrumentDataBySymbol, symbolToCMPMap
 from models import ProductType, TradeExitReason
 from models.trade import Trade
 from utils import (
@@ -28,6 +29,7 @@ class BaseStrategy:
         # NOTE: All the below properties should be set by the Derived Class (Specific to each strategy)
         self.name = name  # strategy name
         self.short_code = short_code
+        self.orderQueue: asyncio.Queue
         self.handler = handler
         self.enabled = True  # Strategy will be run only when it is enabled
         self.productType = ProductType.MIS  # MIS/NRML/CNC etc
@@ -176,7 +178,7 @@ class BaseStrategy:
             if waitSeconds > 0:
                 time.sleep(waitSeconds)
 
-        if self.getVIXThreshold() > self.tradeManager.symbolToCMPMap["INDIA VIX"]:
+        if self.getVIXThreshold() > getCMP(self.short_code, "INDIA VIX"):
             self.tradeManager.deRgisterStrategy(self)
             logging.warn("%s: Not going to conitnue strategy as VIX threshold is not met today.", self.getName())
             return
@@ -259,7 +261,7 @@ class BaseStrategy:
 
         trade.intradaySquareOffTimestamp = getEpoch(self.squareOffTimestamp)
         # Hand over the trade to TradeManager
-        self.tradeManager.addNewTrade(trade)
+        self.orderQueue.put(trade)
 
     def generateTradeWithSLPrice(self, optionSymbol, direction, numLots, lastTradedPrice, underLying, underLyingStopLossPercentage, placeMarketOrder=True):
         trade = Trade(optionSymbol, self.getName())
@@ -282,7 +284,7 @@ class BaseStrategy:
 
         trade.intradaySquareOffTimestamp = getEpoch(self.squareOffTimestamp)
         # Hand over the trade to TradeManager
-        self.tradeManager.addNewTrade(trade)
+        self.orderQueue.put(trade)
 
     def getStrikeWithNearestPremium(self, optionType, nearestPremium, roundToNearestStrike=100):
         # Get the nearest premium strike price

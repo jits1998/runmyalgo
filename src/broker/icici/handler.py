@@ -21,7 +21,11 @@ class ICICIHandler(BaseHandler):
         self.config = config
 
     def set_access_token(self, access_token):
-        self.brokerHandle.generate_session(session_token=access_token, api_secret=self.config["secret"])
+        try:
+            self.brokerHandle.generate_session(session_token=access_token, api_secret=self.config["secret"])
+        except Exception as e:
+            raise Exception ("can't generate session as {}, clear web session".format(str(e)) )
+        
 
     def margins(self):
         margins = self.brokerHandle.get_margin(exchange_code="NFO")
