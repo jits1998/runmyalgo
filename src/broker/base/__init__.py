@@ -1,5 +1,5 @@
 import logging
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Callable, Dict, Generic, List, Optional, TypeVar
 
 from core import Quote
@@ -15,41 +15,41 @@ class BaseHandler(Generic[T]):
         
     @abstractmethod
     def set_access_token(self, accessToken) -> None:
-        pass
+        ...
     
     @abstractmethod
     def margins(self) -> List:
-        pass
+        ...
     
     @abstractmethod
     def positions(self) -> List:
-        pass
+        ...
     
     @abstractmethod
     def orders(self) -> List:
-        pass
+        ...
     
     @abstractmethod
     def quote(self, key: str) -> Dict:
-        pass
+        ...
     
     @abstractmethod
     def instruments(self, exchange: str) -> List:
-        pass
+        ...
     
     def getBrokerHandle(self) -> T:
         return self.broker
     
     @abstractmethod
     def getQuote(self, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
-        pass
+        ...
     
     @abstractmethod
     def getIndexQuote(self, tradingSymbol: str, short_code: str, exchange: str = "NSE"):
-        pass
+        ...
 
 
-class BaseLogin:
+class BaseLogin(ABC):
 
     accessToken: Optional[str]
     brokerHandler: Optional[BaseHandler]
@@ -63,7 +63,7 @@ class BaseLogin:
     # Derived class should implement login function and return redirect url
     @abstractmethod
     def login(self, args: Dict) -> str:
-        pass
+        ...
 
     def setBrokerHandler(self, brokerHandle: BaseHandler) -> None:
         self.brokerHandler = brokerHandle
@@ -83,7 +83,7 @@ class BaseLogin:
         return self.brokerHandler
 
 
-class BaseOrderManager:
+class BaseOrderManager(ABC):
 
     def __init__(self, broker: str, brokerHandle: T):
         self.broker: str = broker
@@ -91,38 +91,38 @@ class BaseOrderManager:
 
     @abstractmethod
     def placeOrder(self, orderInputParams) -> bool:
-        pass
+        ...
 
     @abstractmethod
     def modifyOrder(self, order, orderModifyParams) -> bool:
-        pass
+        ...
 
     @abstractmethod
     def modifyOrderToMarket(self, order) -> bool:
-        pass
+        ...
 
     @abstractmethod
     def cancelOrder(self, order) -> bool:
-        pass
+        ...
 
     @abstractmethod
     def fetchAndUpdateAllOrderDetails(self, orders) -> None:
-        pass
+        ...
 
     @abstractmethod
     def convertToBrokerProductType(self, productType):
-        pass
+        ...
 
     @abstractmethod
     def convertToBrokerOrderType(self, orderType):
-        pass
+        ...
 
     @abstractmethod
     def convertToBrokerDirection(self, direction):
-        pass
+        ...
 
 
-class BaseTicker:
+class BaseTicker(ABC):
     def __init__(self, short_code: str, brokerHandler: BaseHandler) -> None:
         self.short_code: str = short_code
         self.broker: str
@@ -130,21 +130,25 @@ class BaseTicker:
         self.ticker = None
         self.tickListeners: List[Callable] = []
 
+    @abstractmethod
     def startTicker(self, appKey, accessToken) -> None:
-        pass
+        ...
 
+    
     def stopTicker(self) -> None:
-        pass
+        ...
 
     def registerListener(self, listener) -> None:
         # All registered tick listeners will be notified on new ticks
         self.tickListeners.append(listener)
 
+    @abstractmethod
     def registerSymbols(self, symbols: List[str]) -> None:
-        pass
+        ...
 
+    @abstractmethod
     def unregisterSymbols(self, symbols: List[str]) -> None:
-        pass
+        ...
 
     def onNewTicks(self, ticks) -> None:
         # logging.info('New ticks received %s', ticks)
@@ -169,7 +173,7 @@ class BaseTicker:
 
     def onMaxReconnectsAttempt(self) -> None:
         logging.error("Ticker max auto reconnects attempted and giving up..")
-
+        
     def onOrderUpdate(self, data: dict) -> None:
         # logging.info('Ticker: order update %s', data)
-        pass
+        ...
