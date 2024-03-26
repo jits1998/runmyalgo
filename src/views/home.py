@@ -9,8 +9,8 @@ from flask import abort, redirect, render_template, request, session
 
 from algos import BaseAlgo, getAlgo
 from app import flask_app as app
+from app import systemConfig
 from broker import BaseLogin, brokers, load_broker_module
-from config import getUserConfig
 from models.user import UserDetails
 from utils import getUserDetails
 
@@ -91,6 +91,8 @@ def _initiateAlgo(userDetails) -> BaseAlgo:
 @app.route("/apis/algo/start", methods=["POST"])
 def startAlgo():
     algo = getAlgo(session["short_code"])
+    if algo is None:
+        return home(session["short_code"])
     if algo.brokerHandler is None:
         userDetails = getUserDetails(session["short_code"])
         broker_name = userDetails.broker
@@ -101,7 +103,6 @@ def startAlgo():
         algo.brokerHandler = loginHandler.brokerHandler
 
     algo.startAlgo()
-    systemConfig = app.getSystemConfig()
     homeUrl = systemConfig["homeUrl"] + "?algoStarted=true"
     logging.info("Sending redirect url %s in response", homeUrl)
     respData = {"redirect": homeUrl}

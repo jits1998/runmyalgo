@@ -2,6 +2,8 @@ import logging
 from abc import abstractmethod
 from typing import Callable, Dict, Generic, List, Optional, TypeVar
 
+from core import Quote
+
 T = TypeVar("T")
 
 
@@ -23,14 +25,17 @@ class BaseHandler(Generic[T]):
     def orders(self) -> List:
         raise Exception("Method not to be called")
 
-    def quote(self, key) -> Dict:
+    def quote(self, key: str) -> Dict:
         raise Exception("Method not to be called")
 
-    def instruments(self, exchange) -> List:
+    def instruments(self, exchange: str) -> List:
         raise Exception("Method not to be called")
 
     def getBrokerHandle(self) -> T:
         return self.broker
+
+    def getQuote(self, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
+        raise Exception("Method not to be called")
 
 
 class BaseLogin:

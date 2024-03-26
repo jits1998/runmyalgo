@@ -2,9 +2,11 @@ import datetime
 import logging
 import threading
 import time
+from typing import Type
 
 import instruments
 from broker import BaseHandler, brokers, load_broker_module
+from core.strategy import BaseStrategy, StartTimedBaseStrategy
 from core.tradeManager import TradeManager
 from models import UserDetails
 from utils import findNumberOfDaysBeforeWeeklyExpiryDay, isTodayWeeklyExpiryDay
@@ -69,15 +71,15 @@ class BaseAlgo(threading.Thread):
     def startStrategies(self, short_code, multiple=0):
         pass
 
-    def startStrategy(self, strategy, short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
-        strategyInstance = strategy(short_code, multiple)
+    def startStrategy(self, strategy: Type[BaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+        strategyInstance = strategy(short_code, multiple, self.brokerHandler)
         self.tradeManager.registerStrategy(strategyInstance)
         strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
         threading.Thread(target=strategyInstance.run, name=short_code + "_" + strategyInstance.getName()).start()
         self.strategyConfig[strategyInstance.getName()] = run
 
-    def startTimedStrategy(self, strategy, short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None):
-        strategyInstance = strategy(short_code, multiple, startTimestamp=startTimestamp)
+    def startTimedStrategy(self, strategy: Type[StartTimedBaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None):
+        strategyInstance = strategy(short_code, multiple, self.brokerHandler, startTimestamp)
         self.tradeManager.registerStrategy(strategyInstance)
         strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
         threading.Thread(target=strategyInstance.run, name=short_code + "_" + strategyInstance.getName()).start()

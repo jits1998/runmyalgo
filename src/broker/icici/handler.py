@@ -8,6 +8,7 @@ import dateutil.parser
 from breeze_connect import config as breeze_config  # type: ignore[import-untyped]
 
 from broker import BaseHandler
+from core import Quote
 from models import OrderStatus
 
 
@@ -162,3 +163,6 @@ class ICICIHandler(BaseHandler):
                 pass
 
         return records
+
+    def getQuote(self, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
+        raise Exception("Method not to be called")

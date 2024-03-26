@@ -5,6 +5,7 @@ from datetime import datetime
 from math import ceil
 from typing import List
 
+from broker.base import BaseHandler
 from core import Quote
 from instruments import getInstrumentDataBySymbol, symbolToCMPMap
 from models import ProductType, TradeExitReason
@@ -23,10 +24,11 @@ from utils import (
 
 class BaseStrategy:
 
-    def __init__(self, name: str, short_code: str, multiple: int = 0):
+    def __init__(self, name: str, short_code: str, handler: BaseHandler, multiple: int = 0):
         # NOTE: All the below properties should be set by the Derived Class (Specific to each strategy)
         self.name = name  # strategy name
         self.short_code = short_code
+        self.handler = handler
         self.enabled = True  # Strategy will be run only when it is enabled
         self.productType = ProductType.MIS  # MIS/NRML/CNC etc
         self.symbols: List[str] = []  # List of stocks to be traded under this strategy
@@ -227,7 +229,7 @@ class BaseStrategy:
 
     def getQuote(self, tradingSymbol):
         try:
-            return Quotes.getQuote(tradingSymbol, self.short_code, self.isFnO, self.exchange)
+            return self.handler.getQuote(tradingSymbol, self.short_code, self.isFnO, self.exchange)
         except KeyError as e:
             logging.info("%s::%s: Could not get Quote for %s => %s", self.short_code, self.getName(), tradingSymbol, str(e))
         except Exception as exp:
@@ -462,3 +464,33 @@ class BaseStrategy:
             self.enabled = dict["enabled"]
             self.strategySL = dict["strategySL"]
             self.strategyTarget = dict["strategyTarget"]
+
+
+class StartTimedBaseStrategy(BaseStrategy):
+
+    # DO NOT call the base constructor, as it will override the start time and register with trademanager with overridden timestamp
+    def __init__(self, name, short_code, startTime, handler: BaseHandler, multiple=0) -> None:
+        self.name = name  # strategy name
+        self.short_code = short_code
+        self.handler = handler
+        self.enabled = True  # Strategy will be run only when it is enabled
+        self.productType = ProductType.MIS  # MIS/NRML/CNC etc
+        self.symbols = []  # List of stocks to be traded under this strategy
+        self.slPercentage = 0
+        self.targetPercentage = 0
+        self.startTimestamp = startTime  # When to start the strategy. Default is Market start time
+        self.stopTimestamp = None  # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
+        self.squareOffTimestamp = None  # Square off time
+        self.maxTradesPerDay = 1  # Max number of trades per day under this strategy
+        self.isFnO = True  # Does this strategy trade in FnO or not
+        self.strategySL = 0
+        self.strategyTarget = 0
+        self.trades: List[Trade] = []
+        self.expiryDay = 2
+        self.symbol = "BANKNIFTY"
+        self.multiple = multiple
+        self.exchange = "NFO"
+        self.equityExchange = "NSE"
+
+    def getName(self):
+        return super().getName() + "_" + str(self.startTimestamp.time())

@@ -6,6 +6,7 @@ from typing import Dict
 
 from broker.base import BaseHandler
 from config import getServerConfig
+from utils import getEpoch
 
 instrumentsData: Dict[str, Dict] = {}
 symbolToInstrumentMap: Dict[str, Dict[str, str]] = {}
@@ -135,9 +136,6 @@ def getInstrumentDataByToken(short_code, instrumentToken):
     return tokenToInstrumentMap[short_code][instrumentToken]
 
 
-def getEpoch(datetimeObj=None):
-    # This method converts given datetimeObj to epoch seconds
-    if datetimeObj == None:
-        datetimeObj = datetime.now()
-    epochSeconds = datetime.timestamp(datetimeObj)
-    return int(epochSeconds)  # converting double to long
+def getQuote(handler: BaseHandler, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str):
+    handler.broker.getQuote(tradingSymbol, short_code, isFnO, exchange)
+    pass

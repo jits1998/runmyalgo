@@ -3,9 +3,10 @@ from typing import Dict
 from kiteconnect import KiteConnect  # type: ignore[import-untyped]
 
 from broker import BaseHandler
+from core import Quote
 
 
-class ZerodhaHandler(KiteConnect, BaseHandler):
+class ZerodhaHandler(BaseHandler):
 
     def __init__(self, brokerHandle: KiteConnect, config) -> None:
         self.brokerHandle: KiteConnect = brokerHandle
@@ -31,3 +32,6 @@ class ZerodhaHandler(KiteConnect, BaseHandler):
 
     def getBrokerHandle(self) -> KiteConnect:
         return self.brokerHandle
+
+    def getQuote(self, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
+        raise Exception("Method not to be called")
