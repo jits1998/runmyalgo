@@ -9,6 +9,7 @@ from breeze_connect import config as breeze_config  # type: ignore[import-untype
 
 from broker import BaseHandler
 from core import Quote
+from instruments import getInstrumentDataBySymbol
 from models import OrderStatus
 
 
@@ -165,4 +166,49 @@ class ICICIHandler(BaseHandler):
         return records
 
     def getQuote(self, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
-        raise Exception("Method not to be called")
+        isd = getInstrumentDataBySymbol(short_code, tradingSymbol)
+        bQuote = self.brokerHandle.quote(isd)
+        quote = Quote(tradingSymbol)
+        quote.tradingSymbol = tradingSymbol
+        quote.lastTradedPrice = bQuote["ltp"]
+        quote.lastTradedQuantity = 0
+        quote.avgTradedPrice = 0
+        quote.volume = bQuote["total_quantity_traded"]
+        quote.totalBuyQuantity = 0
+        quote.totalSellQuantity = 0
+        quote.open = bQuote["open"]
+        quote.high = bQuote["high"]
+        quote.low = bQuote["low"]
+        quote.close = bQuote["previous_close"]
+        quote.change = 0
+        quote.oiDayHigh = 0
+        quote.oiDayLow = 0
+        quote.oi = 0
+        quote.lowerCiruitLimit = bQuote["lower_circuit"]
+        quote.upperCircuitLimit = bQuote["upper_circuit"]
+
+        return quote
+    
+    def getIndexQuote(self, tradingSymbol, short_code, exchange = "NSE"):
+        isd = getInstrumentDataBySymbol(short_code, tradingSymbol)
+        bQuote = self.brokerHandle.quote(isd)
+        quote = Quote(tradingSymbol)
+        quote.tradingSymbol = tradingSymbol
+        quote.lastTradedPrice = bQuote['ltp']
+        quote.lastTradedQuantity = 0
+        quote.avgTradedPrice = 0
+        quote.volume = bQuote['total_quantity_traded']
+        quote.totalBuyQuantity = 0
+        quote.totalSellQuantity = 0
+        quote.open = bQuote['open']
+        quote.high = bQuote['high']
+        quote.low = bQuote['low']
+        quote.close = bQuote['previous_close']
+        quote.change = 0
+        quote.oiDayHigh = 0
+        quote.oiDayLow = 0
+        quote.oi = 0
+        quote.lowerCiruitLimit = bQuote['lower_circuit']
+        quote.upperCircuitLimit = bQuote['upper_circuit']
+        
+        return quote

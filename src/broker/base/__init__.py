@@ -12,30 +12,41 @@ class BaseHandler(Generic[T]):
     def __init__(self, broker: T) -> None:
         self.broker: T = broker
         self.instrumentsList: List[Dict[str, str]] = []
-
+        
+    @abstractmethod
     def set_access_token(self, accessToken) -> None:
-        raise Exception("Method not to be called")
-
+        pass
+    
+    @abstractmethod
     def margins(self) -> List:
-        raise Exception("Method not to be called")
-
+        pass
+    
+    @abstractmethod
     def positions(self) -> List:
-        raise Exception("Method not to be called")
-
+        pass
+    
+    @abstractmethod
     def orders(self) -> List:
-        raise Exception("Method not to be called")
-
+        pass
+    
+    @abstractmethod
     def quote(self, key: str) -> Dict:
-        raise Exception("Method not to be called")
-
+        pass
+    
+    @abstractmethod
     def instruments(self, exchange: str) -> List:
-        raise Exception("Method not to be called")
-
+        pass
+    
     def getBrokerHandle(self) -> T:
         return self.broker
-
+    
+    @abstractmethod
     def getQuote(self, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
-        raise Exception("Method not to be called")
+        pass
+    
+    @abstractmethod
+    def getIndexQuote(self, tradingSymbol: str, short_code: str, exchange: str = "NSE"):
+        pass
 
 
 class BaseLogin:

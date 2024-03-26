@@ -9,8 +9,8 @@ from models import TickData
 
 
 class ZerodhaTicker(BaseTicker):
-    def __init__(self, short_code):
-        super().__init__(short_code)
+    def __init__(self, short_code, brokerHandler):
+        super().__init__(short_code, brokerHandler)
 
     def startTicker(self, appKey, accessToken):
         if accessToken == None:
@@ -39,7 +39,7 @@ class ZerodhaTicker(BaseTicker):
         logging.info("ZerodhaTicker: stopping..")
         self.ticker.close(1000, "Manual close")
 
-    def registerSymbols(self, symbols, mode=KiteTicker.MODE_QUOTE):
+    def registerSymbols(self, symbols, mode=KiteTicker.MODE_FULL):
         tokens = []
         for symbol in symbols:
             isd = getInstrumentDataBySymbol(self.short_code, symbol)
