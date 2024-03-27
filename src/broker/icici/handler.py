@@ -1,10 +1,13 @@
 import csv
 import datetime
+import logging
+import time
 from io import BytesIO, TextIOWrapper
 from urllib.request import urlopen, urlretrieve
 from zipfile import ZipFile
 
 import dateutil.parser
+import requests
 from breeze_connect import config as breeze_config  # type: ignore[import-untyped]
 
 from broker import BaseHandler
@@ -24,8 +27,7 @@ class ICICIHandler(BaseHandler):
         try:
             self.brokerHandle.generate_session(session_token=access_token, api_secret=self.config["secret"])
         except Exception as e:
-            raise Exception ("can't generate session as {}, clear web session".format(str(e)) )
-        
+            raise Exception("can't generate session as {}, clear web session".format(str(e)))
 
     def margins(self):
         margins = self.brokerHandle.get_margin(exchange_code="NFO")
@@ -60,9 +62,10 @@ class ICICIHandler(BaseHandler):
                 order["transaction_type"] = order["action"]
         return order_list
 
-    def quote(self, isd):
+    def _quote(self, isd):
         product_type = ""
         right = ""
+        retry = False
         if isd["instrument_type"] == "PE":
             product_type = "options"
             right = "PUT"
@@ -73,14 +76,22 @@ class ICICIHandler(BaseHandler):
             product_type = "futures"
             right = "Others"
 
-        return self.brokerHandle.get_quotes(
-            stock_code=isd["name"],
-            exchange_code=isd["exchange"],
-            expiry_date=isd["expiry"],
-            product_type=product_type,
-            right=right,
-            strike_price=isd["strike"],
-        )["Success"][0]
+        try:
+            return self.brokerHandle.get_quotes(
+                stock_code=isd["name"],
+                exchange_code=isd["exchange"],
+                expiry_date=isd["expiry"],
+                product_type=product_type,
+                right=right,
+                strike_price=isd["strike"],
+            )["Success"][0]
+        except requests.exceptions.HttpError as e:
+            if e.response.status_code == 503:
+                retry = True
+        if retry:
+            time.sleep(1)
+            logging.info("retrying getQuote after 1 s for %s", isd["name"])
+            return self._quote(isd)
 
     def instruments(self, exchange):
         # get instruments file to get tradesymbols
@@ -171,7 +182,7 @@ class ICICIHandler(BaseHandler):
 
     def getQuote(self, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
         isd = getInstrumentDataBySymbol(short_code, tradingSymbol)
-        bQuote = self.brokerHandle.quote(isd)
+        bQuote = self._quote(isd)
         quote = Quote(tradingSymbol)
         quote.tradingSymbol = tradingSymbol
         quote.lastTradedPrice = bQuote["ltp"]
@@ -192,27 +203,27 @@ class ICICIHandler(BaseHandler):
         quote.upperCircuitLimit = bQuote["upper_circuit"]
 
         return quote
-    
-    def getIndexQuote(self, tradingSymbol, short_code, exchange = "NSE"):
+
+    def getIndexQuote(self, tradingSymbol, short_code, exchange="NSE"):
         isd = getInstrumentDataBySymbol(short_code, tradingSymbol)
-        bQuote = self.brokerHandle.quote(isd)
+        bQuote = self._quote(isd)
         quote = Quote(tradingSymbol)
         quote.tradingSymbol = tradingSymbol
-        quote.lastTradedPrice = bQuote['ltp']
+        quote.lastTradedPrice = bQuote["ltp"]
         quote.lastTradedQuantity = 0
         quote.avgTradedPrice = 0
-        quote.volume = bQuote['total_quantity_traded']
+        quote.volume = bQuote["total_quantity_traded"]
         quote.totalBuyQuantity = 0
         quote.totalSellQuantity = 0
-        quote.open = bQuote['open']
-        quote.high = bQuote['high']
-        quote.low = bQuote['low']
-        quote.close = bQuote['previous_close']
+        quote.open = bQuote["open"]
+        quote.high = bQuote["high"]
+        quote.low = bQuote["low"]
+        quote.close = bQuote["previous_close"]
         quote.change = 0
         quote.oiDayHigh = 0
         quote.oiDayLow = 0
         quote.oi = 0
-        quote.lowerCiruitLimit = bQuote['lower_circuit']
-        quote.upperCircuitLimit = bQuote['upper_circuit']
-        
+        quote.lowerCiruitLimit = bQuote["lower_circuit"]
+        quote.upperCircuitLimit = bQuote["upper_circuit"]
+
         return quote
