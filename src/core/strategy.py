@@ -8,10 +8,12 @@ from typing import List
 
 from broker.base import BaseHandler
 from core import Quote
+from exceptions import DeRegisterStrategyException, DisableTradeException
 from instruments import getCMP, getInstrumentDataBySymbol, symbolToCMPMap
 from models import ProductType, TradeExitReason
 from models.trade import Trade
 from utils import (
+    findNumberOfDaysBeforeWeeklyExpiryDay,
     getEpoch,
     getMarketStartTime,
     getNearestStrikePrice,
@@ -64,7 +66,7 @@ class BaseStrategy:
         return float(self.multiple)
 
     def getLots(self):
-        lots = self.tradeManager.algoConfig.getLots(self.getName(), self.symbol, self.expiryDay) * self.getMultiple()
+        lots = self._getLots(self.getName(), self.symbol, self.expiryDay) * self.getMultiple()
 
         if isTodayWeeklyExpiryDay("NIFTY", expiryDay=3) and isTodayWeeklyExpiryDay("BANKNIFTY", expiryDay=2):
             lots = lots * 0.5
@@ -81,7 +83,7 @@ class BaseStrategy:
 
         return ceil(lots)
 
-    def process(self):
+    async def process(self):
         # Implementation is specific to each strategy - To defined in derived class
         logging.info("BaseStrategy process is called.")
         pass
@@ -132,7 +134,7 @@ class BaseStrategy:
     def getVIXThreshold(self):
         return 0
 
-    def run(self):
+    async def run(self):
 
         self.fromDict(self.strategyData)
 
@@ -140,22 +142,16 @@ class BaseStrategy:
 
             # NOTE: This should not be overriden in Derived class
             if self.enabled == False:
-                self.tradeManager.deRgisterStrategy(self)
-                logging.warn("%s: Not going to run strategy as its not enabled.", self.getName())
-                return
+                raise DeRegisterStrategyException("Strategy is disabled. Can't run it.")
 
             if self.strategySL > 0:
-                self.tradeManager.deRgisterStrategy(self)
-                logging.warn("Strategy SL should be a -ve number")
-                return
+                raise DeRegisterStrategyException("strategySL < 0. Can't run it.")
 
             self.strategySL = self.strategySL * self.getVIXAdjustment(self.short_code)
             self.strategyTarget = self.strategyTarget * self.getVIXAdjustment(self.short_code)
 
             if isMarketClosedForTheDay():
-                self.tradeManager.deRgisterStrategy(self)
-                logging.warn("%s: Not going to run strategy as market is closed.", self.getName())
-                return
+                raise DeRegisterStrategyException("Market is closed, Can't run it")
 
         for trade in self.trades:
             if trade.exitReason not in [None, TradeExitReason.SL_HIT, TradeExitReason.TARGET_HIT, TradeExitReason.TRAIL_SL_HIT, TradeExitReason.MANUAL_EXIT]:
@@ -163,9 +159,7 @@ class BaseStrategy:
                 return  # likely something at strategy level or broker level, won't continue
 
         if self.canTradeToday() == False:
-            self.tradeManager.deRgisterStrategy(self)
-            logging.warn("%s: Not going to run strategy as it cannot be traded today.", self.getName())
-            return
+            raise DeRegisterStrategyException("Can't be traded today.")
 
         now = datetime.now()
         if now < getMarketStartTime():
@@ -179,9 +173,7 @@ class BaseStrategy:
                 time.sleep(waitSeconds)
 
         if self.getVIXThreshold() > getCMP(self.short_code, "INDIA VIX"):
-            self.tradeManager.deRgisterStrategy(self)
-            logging.warn("%s: Not going to conitnue strategy as VIX threshold is not met today.", self.getName())
-            return
+            raise DeRegisterStrategyException("VIX threshold is not met. Can't run it!")
 
         # Run in an loop and keep processing
         while True:
@@ -198,30 +190,27 @@ class BaseStrategy:
                 return
 
             # Derived class specific implementation will be called when process() is called
-            self.process()
+            await self.process()
 
             # Sleep and wake up 5s after every 15th second, ie after trade manager has updated trades
 
             waitSeconds = 5 - (now.second % 5) + 3
-            time.sleep(waitSeconds)
+            await asyncio.sleep(waitSeconds)
 
     def shouldPlaceTrade(self, trade, tick):
         # Each strategy should call this function from its own shouldPlaceTrade() method before working on its own logic
         if trade == None:
             return False
         if trade.qty == 0:
-            self.tradeManager.disableTrade(trade, "InvalidQuantity")
-            return False
+            raise DisableTradeException("Invalid Quantity")
 
         now = datetime.now()
         if now > self.stopTimestamp:
-            self.tradeManager.disableTrade(trade, "NoNewTradesCutOffTimeReached")
-            return False
+            raise DisableTradeException("NoNewTradesCutOffTimeReached")
 
-        numOfTradesPlaced = self.tradeManager.getNumberOfTradesPlacedByStrategy(self.getName())
+        numOfTradesPlaced = len(self.trades)
         if numOfTradesPlaced >= self.maxTradesPerDay:
-            self.tradeManager.disableTrade(trade, "MaxTradesPerDayReached")
-            return False
+            raise DisableTradeException("MaxTradesPerDayReached")
 
         return True
 
@@ -466,6 +455,20 @@ class BaseStrategy:
             self.enabled = dict["enabled"]
             self.strategySL = dict["strategySL"]
             self.strategyTarget = dict["strategyTarget"]
+
+    def _getLots(self, strategyName, symbol, expiryDay):
+        strategyLots = self.strategyConfig.get(strategyName, [0, -1, -1, -1, -1, -1, 0, 0, 0, 0])
+        if isTodayWeeklyExpiryDay(symbol, expiryDay):
+            return strategyLots[0]
+        noOfDaysBeforeExpiry = findNumberOfDaysBeforeWeeklyExpiryDay(symbol, expiryDay)
+        if strategyLots[-noOfDaysBeforeExpiry] > 0:
+            return strategyLots[-noOfDaysBeforeExpiry]
+        dayOfWeek = datetime.datetime.now().weekday() + 1  # adding + 1 to set monday index as 1
+        # this will handle the run condition during thread start by defaulting to -1, and thus wait in get Lots
+        if dayOfWeek >= 1 and dayOfWeek <= 5:
+            return strategyLots[dayOfWeek]
+        logging.info(strategyName + "::" + str(strategyLots))
+        return 0
 
 
 class StartTimedBaseStrategy(BaseStrategy):

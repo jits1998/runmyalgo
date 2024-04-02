@@ -85,26 +85,16 @@ class BaseAlgo(threading.Thread, ABC):
         strategyInstance = strategy(short_code, multiple, self.brokerHandler)
         self.tradeManager.registerStrategy(strategyInstance)
         strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
-        threading.Thread(target=strategyInstance.run, name=short_code + "_" + strategyInstance.getName()).start()
+        strategy_task = asyncio.run(strategyInstance.run())
+        strategy_task.set_name(short_code + "_" + strategyInstance.getName())
+        self.tasks.append(strategy_task)
+        # threading.Thread(target=strategyInstance.run, name=short_code + "_" + strategyInstance.getName()).start()
         self.strategyConfig[strategyInstance.getName()] = run
 
     def startTimedStrategy(self, strategy: Type[StartTimedBaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None):
         strategyInstance = strategy(short_code, multiple, self.brokerHandler, startTimestamp)
         self.tradeManager.registerStrategy(strategyInstance)
         strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
-        threading.Thread(target=strategyInstance.run, name=short_code + "_" + strategyInstance.getName()).start()
-        self.strategyConfig[strategyInstance.getName()] = run
-
-    def getLots(self, strategyName, symbol, expiryDay):
-        strategyLots = self.strategyConfig.get(strategyName, [0, -1, -1, -1, -1, -1, 0, 0, 0, 0])
-        if isTodayWeeklyExpiryDay(symbol, expiryDay):
-            return strategyLots[0]
-        noOfDaysBeforeExpiry = findNumberOfDaysBeforeWeeklyExpiryDay(symbol, expiryDay)
-        if strategyLots[-noOfDaysBeforeExpiry] > 0:
-            return strategyLots[-noOfDaysBeforeExpiry]
-        dayOfWeek = datetime.datetime.now().weekday() + 1  # adding + 1 to set monday index as 1
-        # this will handle the run condition during thread start by defaulting to -1, and thus wait in get Lots
-        if dayOfWeek >= 1 and dayOfWeek <= 5:
-            return strategyLots[dayOfWeek]
-        logging.info(strategyName + "::" + str(strategyLots))
-        return 0
+        strategy_task = asyncio.run(strategyInstance.run())
+        strategy_task.set_name(short_code + "_" + strategyInstance.getName())
+        self.tasks.append(strategy_task)
