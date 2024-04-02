@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import logging
 import threading
@@ -34,12 +35,15 @@ class BaseAlgo(threading.Thread, ABC):
         self.tradeManager = None
         self.brokerHandler = None
         self.strategyConfig = {}
+        self.tasks = []
 
     def run(self):
-        while True:
-            time.sleep(10)
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
 
     def startAlgo(self):
+
         if self.tradeManager is not None:
             logging.info("Algo has already started..")
             return
@@ -53,14 +57,19 @@ class BaseAlgo(threading.Thread, ABC):
             logging.warn("Algo not started.")
             return
 
-        # start trade manager in a separate thread
+        asyncio.set_event_loop(self.loop)
+
         tm = TradeManager(self.short_code, self.accessToken, self.brokerHandler)
         self.tradeManager = tm
-        tm.run  # breaking here to move to async mode
+
+        tm_task = asyncio.run(tm.run())
+        self.tasks.append(tm_task)
+
+        # breaking here to move to async mode
 
         # sleep for 2 seconds for TradeManager to get initialized
-        while not tm.isReady:
-            if not tm.is_alive():
+        while not self.tradeManager.isReady:
+            if not self.tradeManager.is_alive():
                 logging.info("Ending Algo...")
                 return
             time.sleep(2)

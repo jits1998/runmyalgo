@@ -45,6 +45,8 @@ class TradeManager:
         self.access_token = access_token
         self.symbolToCMPMap = cmp[short_code]
         self.orderQueue: asyncio.Queue = asyncio.Queue()
+        self.questDBCursor = self.getQuestDBConnection()
+
         serverConfig = getServerConfig()
         tradesDir = os.path.join(serverConfig["deployDir"], "trades")
         self.intradayTradesDir = os.path.join(tradesDir, getTodayDateStr())
@@ -74,7 +76,7 @@ class TradeManager:
         while True:
 
             if self.questDBCursor is None or self.questDBCursor.closed:
-                self.questDBCursor = self.getQuestDBConnection(self.short_code)
+                self.questDBCursor = self.getQuestDBConnection()
 
             if not isTodayHoliday() and not isMarketClosedForTheDay() and not len(self.strategyToInstanceMap) == 0:
                 try:
@@ -96,8 +98,8 @@ class TradeManager:
             # Sleep and wake up on every 30th second
             now = datetime.now()
             waitSeconds = 5 - (now.second % 5)
-            asyncio.sleep(waitSeconds)
-            
+            await asyncio.sleep(waitSeconds)
+
     def registerStrategy(self, strategyInstance):
         self.strategyToInstanceMap[strategyInstance.getName()] = strategyInstance
         strategyInstance.strategyData = self.strategiesData.get(strategyInstance.getName(), None)
@@ -154,19 +156,19 @@ class TradeManager:
             json.dump(self.strategyToInstanceMap, tFile, indent=2, cls=TradeEncoder)
         logging.debug("TradeManager: Saved %d strategies to file %s", len(self.strategyToInstanceMap.values()), strategiesFilePath)
 
-    def getQuestDBConnection(self, short_code):
+    def getQuestDBConnection(self):
         try:
             connection = psycopg2.connect(user="admin", password="quest", host="127.0.0.1", port="8812", database="qdb")
             cursor = connection.cursor()
 
             cursor.execute(
                 """CREATE TABLE IF NOT EXISTS {0} ( ts TIMESTAMP, strategy string, tradingSymbol string, tradeId string, cmp float, entry float, pnl float, qty int, status string) timestamp(ts) partition by year""".format(
-                    short_code
+                    self.short_code
                 )
             )
             cursor.execute(
                 """CREATE TABLE IF NOT EXISTS {0}_tickData( ts TIMESTAMP, tradingSymbol string, ltp float, qty int, avgPrice float, volume int, totalBuyQuantity int, totalSellQuantity int, open float, high float, low float, close float, change float) timestamp(ts) partition by year""".format(
-                    short_code
+                    self.short_code
                 )
             )
 
