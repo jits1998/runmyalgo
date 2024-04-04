@@ -23,7 +23,7 @@ class BaseAlgo(threading.Thread, ABC):
     accessToken: str
     short_code: str
     userDetails: UserDetails
-    trademanager: TradeManager
+    tradeManager: TradeManager
     brokerHandler: BaseHandler
 
     def __init__(self, group=None, target=None, name=None, args=(), kwargs=None):
@@ -35,12 +35,12 @@ class BaseAlgo(threading.Thread, ABC):
         ) = args
         self.tradeManager = None
         self.brokerHandler = None
-        self.strategyConfig = {}
         self.tasks = []
 
     def run(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
+        self.loop.set_debug(True)
         self.loop.run_forever()
 
     def startAlgo(self):
@@ -63,8 +63,11 @@ class BaseAlgo(threading.Thread, ABC):
         tm = TradeManager(self.short_code, self.accessToken, self.brokerHandler)
         self.tradeManager = tm
 
-        tm_task = asyncio.run(tm.run())
+        tm_task = asyncio.run_coroutine_threadsafe(tm.run(), self.loop)
         self.tasks.append(tm_task)
+
+        tm__order_task = asyncio.run_coroutine_threadsafe(tm.placeOrders(), self.loop)
+        self.tasks.append(tm__order_task)
 
         # breaking here to move to async mode
 
@@ -75,30 +78,29 @@ class BaseAlgo(threading.Thread, ABC):
                 return
             time.sleep(2)
 
-        self.startStrategies(self.short_code, self.multiple)
+        start_strategies_fut = asyncio.run_coroutine_threadsafe(self.startStrategies(self.short_code, self.multiple), self.loop)
+        self.tasks.append(start_strategies_fut)
 
         logging.info("Algo started.")
 
     @abstractmethod
-    def startStrategies(self, short_code, multiple=0): ...
+    async def startStrategies(self, short_code, multiple=0): ...
 
-    def startStrategy(self, strategy: Type[BaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
-        strategyInstance = strategy(short_code, multiple, self.brokerHandler)
+    async def startStrategy(self, strategy: Type[BaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+        strategyInstance = strategy(short_code, self.brokerHandler, multiple)  # type: ignore
         self.tradeManager.registerStrategy(strategyInstance)
         strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
-        strategy_task: asyncio.Task = asyncio.run(strategyInstance.run())
-        strategy_task.set_name(short_code + "_" + strategyInstance.getName())
+        strategy_task = asyncio.create_task(strategyInstance.run(run))
+        strategy_task.set_name(strategyInstance.getName())
         strategy_task.add_done_callback(self.handleException)
         self.tasks.append(strategy_task)
-        # threading.Thread(target=strategyInstance.run, name=short_code + "_" + strategyInstance.getName()).start()
-        self.strategyConfig[strategyInstance.getName()] = run
 
-    def startTimedStrategy(self, strategy: Type[StartTimedBaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None):
-        strategyInstance = strategy(short_code, multiple, self.brokerHandler, startTimestamp)
+    async def startTimedStrategy(self, strategy: Type[StartTimedBaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None):
+        strategyInstance = strategy(short_code, startTimestamp, self.brokerHandler, multiple)
         self.tradeManager.registerStrategy(strategyInstance)
         strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
-        strategy_task = asyncio.run(strategyInstance.run())
-        strategy_task.set_name(short_code + "_" + strategyInstance.getName())
+        strategy_task = asyncio.create_task(strategyInstance.run(run))
+        # strategy_task.set_name(strategyInstance.getName())
         strategy_task.add_done_callback(self.handleException)
         self.tasks.append(strategy_task)
 
@@ -107,5 +109,5 @@ class BaseAlgo(threading.Thread, ABC):
             logging.info("Exception in %s", task.get_name())
             logging.info(task.exception())
             if isinstance(task.exception(), DeRegisterStrategyException):
-                # disable strategy
+                self.tradeManager.deRgisterStrategy(task.get_name())
                 pass

@@ -8,7 +8,7 @@ import time
 import traceback
 from datetime import datetime
 from json import JSONEncoder
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import psycopg2
 
@@ -51,6 +51,8 @@ class TradeManager:
         self.symbolToCMPMap = cmp[short_code]
         self.orderQueue: asyncio.Queue[Trade] = asyncio.Queue()
         self.questDBCursor = self.getQuestDBConnection()
+        self.strategiesData: Dict[str, Any] = {}
+        self.trades: List[Trade] = []
 
         serverConfig = getServerConfig()
         tradesDir = os.path.join(serverConfig["deployDir"], "trades")
@@ -102,7 +104,8 @@ class TradeManager:
                 self.saveAllTradesToFile()
                 self.saveAllStrategiesToFile()
 
-            # Sleep and wake up on every 30th second
+            # Sleep and wake up on every 5th second
+            # await self.placeOrders()
             now = datetime.now()
             waitSeconds = 5 - (now.second % 5)
             await asyncio.sleep(waitSeconds)
@@ -156,6 +159,9 @@ class TradeManager:
         strategyInstance.strategyData = self.strategiesData.get(strategyInstance.getName(), None)
         strategyInstance.orderQueue = self.orderQueue
 
+    def deRgisterStrategy(self, strategyInstanceName):
+        del self.strategyToInstanceMap[strategyInstanceName]
+
     def loadAllTradesFromFile(self):
         tradesFilepath = self.getTradesFilepath()
         if os.path.exists(tradesFilepath) == False:
@@ -206,6 +212,13 @@ class TradeManager:
         with open(strategiesFilePath, "w") as tFile:
             json.dump(self.strategyToInstanceMap, tFile, indent=2, cls=TradeEncoder)
         logging.debug("TradeManager: Saved %d strategies to file %s", len(self.strategyToInstanceMap.values()), strategiesFilePath)
+
+    def getAllTradesByStrategy(self, strategy: str):
+        tradesByStrategy = []
+        for trade in self.trades:
+            if trade.strategy == strategy:
+                tradesByStrategy.append(trade)
+        return tradesByStrategy
 
     def getQuestDBConnection(self):
         try:

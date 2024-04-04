@@ -2,21 +2,28 @@ import asyncio
 import logging
 import math
 import time
+from abc import ABC
 from datetime import datetime
 from math import ceil
-from typing import List
+from typing import Dict, List
 
 from broker.base import BaseHandler
 from core import Quote
 from exceptions import DeRegisterStrategyException, DisableTradeException
-from instruments import getCMP, getInstrumentDataBySymbol, symbolToCMPMap
-from models import ProductType, TradeExitReason
+from instruments import (
+    getCMP,
+    getInstrumentDataBySymbol,
+    roundToNSEPrice,
+    symbolToCMPMap,
+)
+from models import Direction, ProductType, TradeExitReason
 from models.trade import Trade
 from utils import (
     findNumberOfDaysBeforeWeeklyExpiryDay,
     getEpoch,
     getMarketStartTime,
     getNearestStrikePrice,
+    getTimeOfToDay,
     isMarketClosedForTheDay,
     isTodayWeeklyExpiryDay,
     prepareMonthlyExpiryFuturesSymbol,
@@ -25,9 +32,9 @@ from utils import (
 )
 
 
-class BaseStrategy:
+class BaseStrategy(ABC):
 
-    def __init__(self, name: str, short_code: str, handler: BaseHandler, multiple: int = 0):
+    def __init__(self, name: str, short_code: str, handler: BaseHandler, multiple: int = 0) -> None:  # type: ignore
         # NOTE: All the below properties should be set by the Derived Class (Specific to each strategy)
         self.name = name  # strategy name
         self.short_code = short_code
@@ -134,7 +141,9 @@ class BaseStrategy:
     def getVIXThreshold(self):
         return 0
 
-    async def run(self):
+    async def run(self, runConfig):
+
+        self.runConfig = runConfig  # store run from algo config to getLots later
 
         self.fromDict(self.strategyData)
 
@@ -459,7 +468,7 @@ class BaseStrategy:
             self.strategyTarget = dict["strategyTarget"]
 
     def _getLots(self, strategyName, symbol, expiryDay):
-        strategyLots = self.strategyConfig.get(strategyName, [0, -1, -1, -1, -1, -1, 0, 0, 0, 0])
+        strategyLots = self.runConfig
         if isTodayWeeklyExpiryDay(symbol, expiryDay):
             return strategyLots[0]
         noOfDaysBeforeExpiry = findNumberOfDaysBeforeWeeklyExpiryDay(symbol, expiryDay)
@@ -501,3 +510,141 @@ class StartTimedBaseStrategy(BaseStrategy):
 
     def getName(self):
         return super().getName() + "_" + str(self.startTimestamp.time())
+
+
+class ManualStrategy(BaseStrategy):
+
+    __instance: Dict[str, BaseStrategy] = {}
+
+    @staticmethod
+    def getInstance(short_code):  # singleton class
+        if ManualStrategy.__instance.get(short_code, None) == None:
+            ManualStrategy(short_code)
+        return ManualStrategy.__instance[short_code]
+
+    def __init__(self, short_code: str, handler: BaseHandler, multiple: int = 0):
+
+        if ManualStrategy.__instance.get(short_code, None) != None:
+            raise Exception("This class is a singleton!")
+        else:
+            ManualStrategy.__instance[short_code] = self
+
+        super().__init__("ManualStrategy", short_code, handler, multiple)  # type: ignore
+
+        # When to start the strategy. Default is Market start time
+        self.startTimestamp = getTimeOfToDay(9, 16, 0)
+        self.productType = ProductType.MIS
+        # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
+        self.stopTimestamp = getTimeOfToDay(15, 24, 0)
+        self.squareOffTimestamp = getTimeOfToDay(15, 24, 0)  # Square off time
+        self.maxTradesPerDay = 10
+
+    async def process(self):
+        now = datetime.now()
+        if now < self.startTimestamp or not self.isEnabled():
+            return
+
+
+class TestStrategy(BaseStrategy):
+    __instance: Dict[str, BaseStrategy] = {}
+
+    @staticmethod
+    def getInstance(short_code):  # singleton class
+        if TestStrategy.__instance.get(short_code, None) == None:
+            TestStrategy()
+        return TestStrategy.__instance[short_code]
+
+    def __init__(self, short_code: str, handler: BaseHandler, multiple: int = 0):
+        if TestStrategy.__instance.get(short_code, None) != None:
+            raise Exception("This class is a singleton!")
+        else:
+            TestStrategy.__instance[short_code] = self
+        # Call Base class constructor
+        super().__init__("TestStrategy", short_code, multiple)  # type: ignore
+        # Initialize all the properties specific to this strategy
+        self.productType = ProductType.MIS
+        self.symbols = []
+        self.slPercentage = 0
+        self.targetPercentage = 0
+        self.startTimestamp = getTimeOfToDay(9, 25, 0)  # When to start the strategy. Default is Market start time
+        self.stopTimestamp = getTimeOfToDay(
+            15, 15, 0
+        )  # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
+        self.squareOffTimestamp = getTimeOfToDay(15, 15, 0)  # Square off time
+        self.maxTradesPerDay = 2  # (1 CE + 1 PE) Max number of trades per day under this strategy
+        self.ceTrades = []
+        self.peTrades = []
+        self.strategyTarget = 2000
+        self.strategySL = -1000
+        self.symbol = "NIFTY"
+        self.expiryDay = 3
+
+        for trade in self.trades:
+            if trade.tradingSymbol.endswith("CE"):
+                self.ceTrades.append(trade)
+            else:
+                self.peTrades.append(trade)
+
+    async def process(self):
+        now = datetime.now()
+        if now < self.startTimestamp or not self.isEnabled():
+            return
+
+        if len(self.ceTrades) >= 1 and len(self.peTrades) >= 1:
+            return
+
+        if self.isTargetORSLHit():
+            # self.setDisabled()
+            return
+        indexSymbol = "NIFTY 50"
+        # Get current market price of Nifty Future
+        quote = self.handler.getIndexQuote(indexSymbol, self.short_code)
+        if quote == None:
+            logging.error("%s: Could not get quote for %s", self.getName(), indexSymbol)
+            return
+
+        ATMStrike = getNearestStrikePrice(quote.lastTradedPrice, 50)
+
+        ATMCESymbol = prepareWeeklyOptionsSymbol(self.symbol, ATMStrike, "CE", expiryDay=self.expiryDay)
+        ATMCEQuote = self.getQuote(ATMCESymbol).lastTradedPrice
+
+        ATMPESymbol = prepareWeeklyOptionsSymbol(self.symbol, ATMStrike, "PE", expiryDay=self.expiryDay)
+        ATMPEQuote = self.getQuote(ATMPESymbol).lastTradedPrice
+
+        OTMPEStrike = getNearestStrikePrice(quote.lastTradedPrice - 500, 50)
+        OTMPESymbol = prepareWeeklyOptionsSymbol(self.symbol, OTMPEStrike, "PE", expiryDay=self.expiryDay)
+        OTMPEQuote = self.getQuote(OTMPESymbol).lastTradedPrice
+
+        OTMCEStrike = getNearestStrikePrice(quote.lastTradedPrice + 500, 50)
+        OTMCESymbol = prepareWeeklyOptionsSymbol(self.symbol, OTMCEStrike, "CE", expiryDay=self.expiryDay)
+        OTMCEQuote = self.getQuote(OTMCESymbol).lastTradedPrice
+
+        # self.generateTrade(OTMPESymbol, Direction.SHORT, self.getLots(), OTMPEQuote * 1.2, 5)
+        self.generateTrade(OTMCESymbol, Direction.SHORT, self.getLots(), OTMCEQuote * 1.2, 5)
+
+    def shouldPlaceTrade(self, trade: Trade):
+        if not super().shouldPlaceTrade(trade):
+            return False
+        if (trade.tradingSymbol.endswith("CE")) and len(self.ceTrades) < 2:
+            return True
+        if (trade.tradingSymbol.endswith("PE")) and len(self.peTrades) < 2:
+            return True
+
+        return False
+
+    def addTradeToList(self, trade: Trade):
+        if trade != None:
+            self.trades.append(trade)
+            if trade.tradingSymbol.endswith("CE"):
+                self.ceTrades.append(trade)
+            else:
+                self.peTrades.append(trade)
+
+    def getTrailingSL(self, trade: Trade):
+
+        if trade.stopLoss == 0 and trade.entry > 0:
+            trade.initialStopLoss = roundToNSEPrice(self.short_code, trade.tradingSymbol, trade.entry + (+1 if trade.direction == Direction.SHORT else -1) * 1)
+            return trade.initialStopLoss
+
+        trailSL = 0
+        return trailSL
