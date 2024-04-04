@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta
 
 from config import getHolidays, getUserConfig
-from models import UserDetails
+from models import Direction, TradeState, UserDetails
 
 DateFormat = "%Y-%m-%d"
 timeFormat = "%H:%M:%S"
@@ -24,6 +24,30 @@ def getUserDetails(short_code: str) -> UserDetails:
     userDetails.algoType = userConfig["algoType"]
 
     return userDetails
+
+
+def roundOff(price):  # Round off to 2 decimal places
+    return round(price, 2)
+
+
+def calculateTradePnl(trade):
+    if trade.tradeState == TradeState.ACTIVE:
+        if trade.cmp > 0:
+            if trade.direction == Direction.LONG:
+                trade.pnl = roundOff(trade.filledQty * (trade.cmp - trade.entry))
+            else:
+                trade.pnl = roundOff(trade.filledQty * (trade.entry - trade.cmp))
+    else:
+        if trade.exit > 0:
+            if trade.direction == Direction.LONG:
+                trade.pnl = roundOff(trade.filledQty * (trade.exit - trade.entry))
+            else:
+                trade.pnl = roundOff(trade.filledQty * (trade.entry - trade.exit))
+    tradeValue = trade.entry * trade.filledQty
+    if tradeValue > 0:
+        trade.pnlPercentage = roundOff(trade.pnl * 100 / tradeValue)
+
+    return trade
 
 
 def getEpoch(datetimeObj=None):

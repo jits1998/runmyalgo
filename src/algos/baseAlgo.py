@@ -14,10 +14,6 @@ from exceptions import DeRegisterStrategyException
 from models import UserDetails
 from utils import findNumberOfDaysBeforeWeeklyExpiryDay, isTodayWeeklyExpiryDay
 
-# from utils import getBrokerLogin, getTradeManager, getUserDetails
-
-# from Test import Test
-
 
 class BaseAlgo(threading.Thread, ABC):
     accessToken: str

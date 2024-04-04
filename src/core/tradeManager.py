@@ -104,11 +104,15 @@ class TradeManager:
                 self.saveAllTradesToFile()
                 self.saveAllStrategiesToFile()
 
-            # Sleep and wake up on every 5th second
-            # await self.placeOrders()
             now = datetime.now()
             waitSeconds = 5 - (now.second % 5)
             await asyncio.sleep(waitSeconds)
+
+    def squareOffTrade(self, trade, exitReason):
+        pass
+
+    def squareOffStrategy(self, strategyInstance, exitReason):
+        pass
 
     async def placeOrders(self):
         while True:

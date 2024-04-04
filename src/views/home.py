@@ -120,11 +120,3 @@ def token_required(f: Callable):
         return f(trademanager, *args, **kwargs)
 
     return decorator
-
-
-def getBrokerLogin(short_code: str) -> Union[BaseLogin, None]:
-    for t in threading.enumerate():
-        if t.getName() == short_code:
-            algo: BaseAlgo = t  # type: ignore
-            return algo.loginHandler
-    return None
