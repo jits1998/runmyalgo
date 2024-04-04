@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -13,10 +15,13 @@ import psycopg2
 from broker import BaseHandler, BaseTicker, brokers
 from config import getServerConfig
 from core.strategy import BaseStrategy
+from instruments import roundToNSEPrice
 from instruments import symbolToCMPMap as cmp
-from models.order import Order
+from models import Direction, OrderType, TradeState
+from models.order import Order, OrderInputParams
 from models.trade import Trade
 from utils import (
+    getEpoch,
     getTodayDateStr,
     getUserDetails,
     isMarketClosedForTheDay,
@@ -36,7 +41,7 @@ class TradeEncoder(JSONEncoder):
 
 class TradeManager:
 
-    strategyToInstanceMap: Dict[str, Any] = {}
+    strategyToInstanceMap: Dict[str, BaseStrategy] = {}
     symbolToCMPMap: Dict[str, float] = {}
     ticker: BaseTicker
 
@@ -44,7 +49,7 @@ class TradeManager:
         self.short_code = short_code
         self.access_token = access_token
         self.symbolToCMPMap = cmp[short_code]
-        self.orderQueue: asyncio.Queue = asyncio.Queue()
+        self.orderQueue: asyncio.Queue[Trade] = asyncio.Queue()
         self.questDBCursor = self.getQuestDBConnection()
 
         serverConfig = getServerConfig()
@@ -53,6 +58,8 @@ class TradeManager:
         if os.path.exists(self.intradayTradesDir) == False:
             logging.info("TradeManager: Intraday Trades Directory %s does not exist. Hence going to create.", self.intradayTradesDir)
             os.makedirs(self.intradayTradesDir)
+
+        self.order_manager = brokers[getUserDetails(short_code).broker]["order_manager"](short_code, brokerHandler)
 
         self.ticker = brokers[getUserDetails(short_code).broker]["ticker"](short_code, brokerHandler)
 
@@ -99,6 +106,50 @@ class TradeManager:
             now = datetime.now()
             waitSeconds = 5 - (now.second % 5)
             await asyncio.sleep(waitSeconds)
+
+    async def placeOrders(self):
+        while True:
+            trade: Trade = await self.orderQueue.get()  # type: ignore
+            try:
+                strategyInstance = self.strategyToInstanceMap[trade.strategy]
+                if strategyInstance.shouldPlaceTrade(trade):
+                    # place the longTrade
+                    isSuccess = self.executeTrade(trade)
+                    if isSuccess == True:
+                        # set longTrade state to ACTIVE
+                        trade.tradeState = TradeState.ACTIVE
+                        trade.startTimestamp = getEpoch()
+                        continue
+            except Exception as e:
+                logging.warn(str(e))
+
+            trade.tradeState = TradeState.DISABLED
+
+    def executeTrade(self, trade):
+        logging.info("TradeManager: Execute trade called for %s", trade)
+        trade.initialStopLoss = trade.stopLoss
+        # Create order input params object and place order
+        oip = OrderInputParams(trade.tradingSymbol)
+        oip.exchange = trade.exchange
+        oip.direction = trade.direction
+        oip.productType = trade.productType
+        oip.orderType = OrderType.LIMIT if trade.placeMarketOrder == True else OrderType.SL_LIMIT
+        oip.triggerPrice = roundToNSEPrice(trade.requestedEntry)
+        oip.price = roundToNSEPrice(self.short_code, trade.tradingSymbol, trade.requestedEntry * (1.01 if trade.direction == Direction.LONG else 0.99))
+        oip.qty = trade.qty
+        oip.tag = trade.strategy
+        if trade.isFutures == True or trade.isOptions == True:
+            oip.isFnO = True
+        try:
+            placedOrder = self.order_manager.placeOrder(oip)
+            trade.entryOrder.append(placedOrder)
+            self.orders[placedOrder.orderId] = placedOrder
+        except Exception as e:
+            logging.error("TradeManager: Execute trade failed for tradeID %s: Error => %s", trade.tradeID, str(e))
+            return False
+
+        logging.info("TradeManager: Execute trade successful for %s and entryOrder %s", trade, trade.entryOrder)
+        return True
 
     def registerStrategy(self, strategyInstance):
         self.strategyToInstanceMap[strategyInstance.getName()] = strategyInstance

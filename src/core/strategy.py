@@ -31,7 +31,7 @@ class BaseStrategy:
         # NOTE: All the below properties should be set by the Derived Class (Specific to each strategy)
         self.name = name  # strategy name
         self.short_code = short_code
-        self.orderQueue: asyncio.Queue
+        self.orderQueue: asyncio.Queue[Trade]
         self.handler = handler
         self.enabled = True  # Strategy will be run only when it is enabled
         self.productType = ProductType.MIS  # MIS/NRML/CNC etc
@@ -197,7 +197,7 @@ class BaseStrategy:
             waitSeconds = 5 - (now.second % 5) + 3
             await asyncio.sleep(waitSeconds)
 
-    def shouldPlaceTrade(self, trade, tick):
+    def shouldPlaceTrade(self, trade):
         # Each strategy should call this function from its own shouldPlaceTrade() method before working on its own logic
         if trade == None:
             return False
@@ -231,7 +231,7 @@ class BaseStrategy:
     def getTrailingSL(self, trade):
         return 0
 
-    def generateTrade(self, optionSymbol, direction, numLots, lastTradedPrice, slPercentage=0, slPrice=0, targetPrice=0, placeMarketOrder=True):
+    async def generateTrade(self, optionSymbol, direction, numLots, lastTradedPrice, slPercentage=0, slPrice=0, targetPrice=0, placeMarketOrder=True):
         trade = Trade(optionSymbol, self.getName())
         trade.isOptions = True
         trade.exchange = self.exchange
@@ -250,9 +250,11 @@ class BaseStrategy:
 
         trade.intradaySquareOffTimestamp = getEpoch(self.squareOffTimestamp)
         # Hand over the trade to TradeManager
-        self.orderQueue.put(trade)
+        await self.orderQueue.put(trade)
 
-    def generateTradeWithSLPrice(self, optionSymbol, direction, numLots, lastTradedPrice, underLying, underLyingStopLossPercentage, placeMarketOrder=True):
+    async def generateTradeWithSLPrice(
+        self, optionSymbol, direction, numLots, lastTradedPrice, underLying, underLyingStopLossPercentage, placeMarketOrder=True
+    ):
         trade = Trade(optionSymbol, self.getName())
         trade.isOptions = True
         trade.exchange = self.exchange
@@ -273,7 +275,7 @@ class BaseStrategy:
 
         trade.intradaySquareOffTimestamp = getEpoch(self.squareOffTimestamp)
         # Hand over the trade to TradeManager
-        self.orderQueue.put(trade)
+        await self.orderQueue.put(trade)
 
     def getStrikeWithNearestPremium(self, optionType, nearestPremium, roundToNearestStrike=100):
         # Get the nearest premium strike price

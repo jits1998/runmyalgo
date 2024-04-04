@@ -5,7 +5,7 @@ from typing import Dict
 from breeze_connect import BreezeConnect  # type: ignore[import-untyped]
 
 from broker import BaseLogin
-from broker.icici import ICICIHandler
+from broker.icici import Handler
 from config import getSystemConfig
 
 
@@ -17,7 +17,7 @@ class ICICILogin(BaseLogin):
         logging.info("==> ICICILogin .args => %s", args)
         systemConfig = getSystemConfig()
         brokerHandle = BreezeConnect(api_key=self.userDetails["key"])
-        self.setBrokerHandler(ICICIHandler(brokerHandle, self.userDetails))
+        self.setBrokerHandler(Handler(brokerHandle, self.userDetails))
         redirectUrl = None
         if "apisession" in args:
 

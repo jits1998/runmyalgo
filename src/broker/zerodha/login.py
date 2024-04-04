@@ -4,7 +4,7 @@ from typing import Dict
 from kiteconnect import KiteConnect  # type: ignore[import-untyped]
 
 from broker import BaseLogin
-from broker.zerodha import ZerodhaHandler
+from broker.zerodha import Handler
 from config import getSystemConfig
 
 
@@ -16,7 +16,7 @@ class ZerodhaLogin(BaseLogin):
         logging.info("==> ZerodhaLogin .args => %s", args)
         systemConfig = getSystemConfig()
         brokerHandle = KiteConnect(api_key=self.userDetails["key"])
-        self.setBrokerHandler(ZerodhaHandler(brokerHandle, self.userDetails))
+        self.setBrokerHandler(Handler(brokerHandle, self.userDetails))
         redirectUrl = None
         if "request_token" in args:
             requestToken = args["request_token"]

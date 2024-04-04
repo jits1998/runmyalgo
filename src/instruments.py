@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 from datetime import datetime
 from typing import Dict
@@ -13,8 +14,10 @@ symbolToInstrumentMap: Dict[str, Dict[str, str]] = {}
 tokenToInstrumentMap: Dict[str, Dict[str, str]] = {}
 symbolToCMPMap: Dict[str, Dict[str, float]] = {}
 
+
 def getCMP(short_code, tradingSymbol) -> float:
     return symbolToCMPMap[short_code][tradingSymbol]
+
 
 def getTimestampsData(short_code):
     serverConfig = getServerConfig()
@@ -141,3 +144,8 @@ def getInstrumentDataByToken(short_code, instrumentToken):
 def getQuote(handler: BaseHandler, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str):
     handler.broker.getQuote(tradingSymbol, short_code, isFnO, exchange)
     pass
+
+
+def roundToNSEPrice(short_code: str, tradingSymbol: str, price: float) -> float:
+    tick_size: float = getInstrumentDataBySymbol(short_code, tradingSymbol)["tick_size"]
+    return max(round(tick_size * math.ceil(price / tick_size), 2), 0.05) if price != 0 else 0

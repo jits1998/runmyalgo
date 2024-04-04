@@ -10,6 +10,7 @@ import instruments
 from broker import BaseHandler, brokers, load_broker_module
 from core.strategy import BaseStrategy, StartTimedBaseStrategy
 from core.tradeManager import TradeManager
+from exceptions import DeRegisterStrategyException
 from models import UserDetails
 from utils import findNumberOfDaysBeforeWeeklyExpiryDay, isTodayWeeklyExpiryDay
 
@@ -85,8 +86,9 @@ class BaseAlgo(threading.Thread, ABC):
         strategyInstance = strategy(short_code, multiple, self.brokerHandler)
         self.tradeManager.registerStrategy(strategyInstance)
         strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
-        strategy_task = asyncio.run(strategyInstance.run())
+        strategy_task: asyncio.Task = asyncio.run(strategyInstance.run())
         strategy_task.set_name(short_code + "_" + strategyInstance.getName())
+        strategy_task.add_done_callback(self.handleException)
         self.tasks.append(strategy_task)
         # threading.Thread(target=strategyInstance.run, name=short_code + "_" + strategyInstance.getName()).start()
         self.strategyConfig[strategyInstance.getName()] = run
@@ -97,4 +99,13 @@ class BaseAlgo(threading.Thread, ABC):
         strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
         strategy_task = asyncio.run(strategyInstance.run())
         strategy_task.set_name(short_code + "_" + strategyInstance.getName())
+        strategy_task.add_done_callback(self.handleException)
         self.tasks.append(strategy_task)
+
+    def handleException(self, task):
+        if task.exception() is not None:
+            logging.info("Exception in %s", task.get_name())
+            logging.info(task.exception())
+            if isinstance(task.exception(), DeRegisterStrategyException):
+                # disable strategy
+                pass
