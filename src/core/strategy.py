@@ -5,7 +5,7 @@ import time
 from abc import ABC
 from datetime import datetime
 from math import ceil
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from broker.base import BaseHandler
 from core import Quote
@@ -19,6 +19,7 @@ from models import (
     TradeExitReason,
     TradeState,
 )
+from models.order import Order, OrderModifyParams
 from models.trade import Trade
 from utils import (
     calculateTradePnl,
@@ -26,7 +27,7 @@ from utils import (
     getEpoch,
     getMarketStartTime,
     getNearestStrikePrice,
-    getTimeOfToDay,
+    getTimeOfToday,
     isMarketClosedForTheDay,
     isTodayWeeklyExpiryDay,
     prepareMonthlyExpiryFuturesSymbol,
@@ -42,6 +43,7 @@ class BaseStrategy(ABC):
         self.name = name  # strategy name
         self.short_code = short_code
         self.orderQueue: asyncio.Queue[Trade]
+        self.strategyData: Dict[str, str] = {}
         self.handler = handler
         self.enabled = True  # Strategy will be run only when it is enabled
         self.productType = ProductType.MIS  # MIS/NRML/CNC etc
@@ -49,11 +51,12 @@ class BaseStrategy(ABC):
         self.slPercentage = 0
         self.targetPercentage = 0
         self.startTimestamp = getMarketStartTime()  # When to start the strategy. Default is Market start time
-        self.stopTimestamp = None  # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
-        self.squareOffTimestamp = None  # Square off time
+        # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
+        self.stopTimestamp = getTimeOfToday(0, 0, 0)
+        self.squareOffTimestamp = getTimeOfToday(0, 0, 0)  # Square off time
         self.maxTradesPerDay = 1  # Max number of trades per day under this strategy
         self.isFnO = True  # Does this strategy trade in FnO or not
-        self.strategySL = 0
+        self.strategySL: float = 0
         self.strategyTarget = 0
         # Load all trades of this strategy into self.trades on restart of app
         self.trades: List[Trade] = []
@@ -63,19 +66,19 @@ class BaseStrategy(ABC):
         self.exchange = "NFO"
         self.equityExchange = "NSE"
 
-    def getName(self):
+    def getName(self) -> str:
         return self.name
 
-    def isEnabled(self):
+    def isEnabled(self) -> bool:
         return self.enabled
 
-    def setDisabled(self):
+    def setDisabled(self) -> None:
         self.enabled = False
 
-    def getMultiple(self):
+    def getMultiple(self) -> float:
         return float(self.multiple)
 
-    def getLots(self):
+    def getLots(self) -> int:
         lots = self._getLots(self.getName(), self.symbol, self.expiryDay) * self.getMultiple()
 
         if isTodayWeeklyExpiryDay("NIFTY", expiryDay=3) and isTodayWeeklyExpiryDay("BANKNIFTY", expiryDay=2):
@@ -93,12 +96,12 @@ class BaseStrategy(ABC):
 
         return ceil(lots)
 
-    async def process(self):
+    async def process(self) -> None:
         # Implementation is specific to each strategy - To defined in derived class
         logging.info("BaseStrategy process is called.")
         pass
 
-    def isTargetORSLHit(self):
+    def isTargetORSLHit(self) -> Optional[TradeExitReason]:
         if self.strategySL == 0 and self.strategyTarget == 0:
             return None
 
@@ -133,7 +136,7 @@ class BaseStrategy(ABC):
         else:
             return None
 
-    def canTradeToday(self):
+    def canTradeToday(self) -> bool:
         # if the run is not set, it will default to -1, thus wait
         while self.getLots() == -1:
             time.sleep(2)
@@ -141,10 +144,10 @@ class BaseStrategy(ABC):
         # strategy will run only if the number of lots is > 0
         return self.getLots() > 0
 
-    def getVIXThreshold(self):
+    def getVIXThreshold(self) -> float:
         return 0
 
-    async def run(self, runConfig):
+    async def run(self, runConfig) -> None:
 
         self.runConfig = runConfig  # store run from algo config to getLots later
 
@@ -227,7 +230,7 @@ class BaseStrategy(ABC):
                         trade.target = getCMP(self.short_code, trade.tradingSymbol)
                         self.squareOffTrade(trade, TradeExitReason.SQUARE_OFF)
 
-    def _trackEntryOrder(self, trade):
+    def _trackEntryOrder(self, trade: Trade):
         if trade.tradeState != TradeState.ACTIVE:
             return
 
@@ -251,9 +254,9 @@ class BaseStrategy(ABC):
             elif entryOrder.orderStatus not in [OrderStatus.REJECTED, OrderStatus.CANCELLED, None] and not entryOrder.orderType in [OrderType.SL_LIMIT]:
                 omp = OrderModifyParams()
                 if trade.direction == Direction.LONG:
-                    omp.newPrice = roundToNSEPrice(entryOrder.price * 1.01) + 0.05
+                    omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, entryOrder.price * 1.01) + 0.05
                 else:
-                    omp.newPrice = roundToNSEPrice(entryOrder.price * 0.99) - 0.05
+                    omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, entryOrder.price * 0.99) - 0.05
                 try:
                     self.modifyOrder(entryOrder, omp, trade.qty)
                 except Exception as e:
@@ -261,7 +264,7 @@ class BaseStrategy(ABC):
                         self.cancelOrder(entryOrder)
             elif entryOrder.orderStatus in [OrderStatus.TRIGGER_PENDING]:
                 nowEpoch = getEpoch()
-                if nowEpoch >= getEpoch(self.strategyToInstanceMap[trade.strategy].stopTimestamp):
+                if nowEpoch >= getEpoch(self.stopTimestamp):
                     self.cancelOrder(entryOrder)
 
             trade.filledQty += entryOrder.filledQty
@@ -273,9 +276,9 @@ class BaseStrategy(ABC):
             trade.tradeState = TradeState.DISABLED
 
         if orderRejected > 0:
-            strategy = self.strategyToInstanceMap[trade.strategy]
+            strategy = self
             for trade in strategy.trades:
-                if trade.tradeState in (TradeState.ACTIVE):
+                if trade.tradeState in [TradeState.ACTIVE]:
                     trade.target = getCMP(self.short_code, trade.tradingSymbol)
                     self.squareOffTrade(trade, TradeExitReason.TRADE_FAILED)
                 strategy.setDisabled()
@@ -352,7 +355,7 @@ class BaseStrategy(ABC):
                     exit = getCMP(self.short_code, trade.tradingSymbol)
                     self.setTradeToCompleted(trade, exit, TradeExitReason.SL_CANCELLED)
             elif slRejected > 0:
-                strategy = self.strategyToInstanceMap[trade.strategy]
+                strategy = self
                 for trade in strategy.trades:
                     if trade.tradeState in (TradeState.ACTIVE):
                         trade.target = getCMP(self.short_code, trade.tradingSymbol)
@@ -396,7 +399,7 @@ class BaseStrategy(ABC):
                 logging.error("TradeManager: Failed to modify SL order for tradeID %s : Error => %s", trade.tradeID, str(e))
 
     def _trackTargetOrder(self, trade):
-        if trade.tradeState != TradeState.ACTIVE and self.strategyToInstanceMap[trade.strategy].isTargetORSLHit() is not None:
+        if trade.tradeState != TradeState.ACTIVE and self.isTargetORSLHit() is not None:
             return
         if trade.target == 0:  # Do not place Target order if no target provided
             return
@@ -464,7 +467,7 @@ class BaseStrategy(ABC):
     def cancelOrder(self, order):
         pass
 
-    def modifyOrder(self, order, omp, qty):
+    def modifyOrder(self, order: Order, omp: OrderModifyParams, qty: int):
         pass
 
     def setTradeToCompleted(self, trade, exit, exitReason=None):
@@ -845,11 +848,11 @@ class ManualStrategy(BaseStrategy):
         super().__init__("ManualStrategy", short_code, handler, multiple)  # type: ignore
 
         # When to start the strategy. Default is Market start time
-        self.startTimestamp = getTimeOfToDay(9, 16, 0)
+        self.startTimestamp = getTimeOfToday(9, 16, 0)
         self.productType = ProductType.MIS
         # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
-        self.stopTimestamp = getTimeOfToDay(15, 24, 0)
-        self.squareOffTimestamp = getTimeOfToDay(15, 24, 0)  # Square off time
+        self.stopTimestamp = getTimeOfToday(15, 24, 0)
+        self.squareOffTimestamp = getTimeOfToday(15, 24, 0)  # Square off time
         self.maxTradesPerDay = 10
 
     async def process(self):
@@ -879,11 +882,11 @@ class TestStrategy(BaseStrategy):
         self.symbols = []
         self.slPercentage = 0
         self.targetPercentage = 0
-        self.startTimestamp = getTimeOfToDay(9, 25, 0)  # When to start the strategy. Default is Market start time
-        self.stopTimestamp = getTimeOfToDay(
+        self.startTimestamp = getTimeOfToday(9, 25, 0)  # When to start the strategy. Default is Market start time
+        self.stopTimestamp = getTimeOfToday(
             15, 15, 0
         )  # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
-        self.squareOffTimestamp = getTimeOfToDay(15, 15, 0)  # Square off time
+        self.squareOffTimestamp = getTimeOfToday(15, 15, 0)  # Square off time
         self.maxTradesPerDay = 2  # (1 CE + 1 PE) Max number of trades per day under this strategy
         self.ceTrades = []
         self.peTrades = []

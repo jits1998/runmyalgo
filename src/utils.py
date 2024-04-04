@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from config import getHolidays, getUserConfig
 from models import Direction, TradeState, UserDetails
+from models.trade import Trade
 
 DateFormat = "%Y-%m-%d"
 timeFormat = "%H:%M:%S"
@@ -26,11 +27,11 @@ def getUserDetails(short_code: str) -> UserDetails:
     return userDetails
 
 
-def roundOff(price):  # Round off to 2 decimal places
+def roundOff(price: float):  # Round off to 2 decimal places
     return round(price, 2)
 
 
-def calculateTradePnl(trade):
+def calculateTradePnl(trade: Trade):
     if trade.tradeState == TradeState.ACTIVE:
         if trade.cmp > 0:
             if trade.direction == Direction.LONG:
@@ -169,7 +170,7 @@ def getMonthlyExpiryDayDate(datetimeObj=None, expiryDay=3):
 
 def isTodayWeeklyExpiryDay(inputSymbol, expiryDay=2):
     expiryDate = getWeeklyExpiryDayDate(inputSymbol, expiryDay=expiryDay)
-    todayDate = getTimeOfToDay(0, 0, 0)
+    todayDate = getTimeOfToday(0, 0, 0)
     if expiryDate == todayDate:
         return True
     return False
@@ -181,7 +182,7 @@ def findNumberOfDaysBeforeWeeklyExpiryDay(inputSymbol, expiryDay=2):
         return 0
 
     expiryDate = getWeeklyExpiryDayDate(inputSymbol, expiryDay=expiryDay)
-    dateTimeObj = getTimeOfToDay(0, 0, 0)
+    dateTimeObj = getTimeOfToday(0, 0, 0)
     currentWeekTradingDates = []
 
     while dateTimeObj < expiryDate:
@@ -195,7 +196,7 @@ def findNumberOfDaysBeforeWeeklyExpiryDay(inputSymbol, expiryDay=2):
     return len(currentWeekTradingDates)
 
 
-def getTimeOfToDay(hours, minutes, seconds):
+def getTimeOfToday(hours, minutes, seconds):
     return getTimeOfDay(hours, minutes, seconds, datetime.now())
 
 

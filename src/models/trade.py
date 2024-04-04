@@ -1,12 +1,14 @@
 import logging
 import uuid
 from datetime import datetime
+from typing import List
 
 from models import ProductType, TradeState
+from models.order import Order
 
 
 class Trade:
-    def __init__(self, tradingSymbol=None, strategy=""):
+    def __init__(self, tradingSymbol=None, strategy="") -> None:
         self.exchange = "NSE"
         self.tradeID = ((strategy + ":") if not strategy == "" else "") + str(uuid.uuid4())  # Unique ID for each trade
         self.tradingSymbol = tradingSymbol
@@ -19,16 +21,17 @@ class Trade:
         self.underLying = None  # NIFTY BANK / NIFTY 50, only if isOptions or isFutures set to True
         self.placeMarketOrder = False  # True means place the entry order with Market Order Type
         self.intradaySquareOffTimestamp = None  # Can be strategy specific. Some can square off at 15:00:00 some can at 15:15:00 etc.
-        self.requestedEntry = 0  # Requested entry
-        self.entry = 0  # Actual entry. This will be different from requestedEntry if the order placed is Market order
+        self.requestedEntry = 0.0  # Requested entry
+        self.entry = 0.0  # Actual entry. This will be different from requestedEntry if the order placed is Market order
         self.qty = 0  # Requested quantity
         self.filledQty = 0  # In case partial fill qty is not equal to filled quantity
-        self.initialStopLoss = 0  # Initial stop loss
-        self._stopLoss = 0  # This is the current stop loss. In case of trailing SL the current stopLoss and initialStopLoss will be different after some time
-        self.target = 0  # Target price if applicable
-        self.cmp = 0  # Last traded price
-        self.stopLossPercentage = 0
-        self.stopLossUnderlyingPercentage = 0
+        self.initialStopLoss = 0.0  # Initial stop loss
+        # This is the current stop loss. In case of trailing SL the current stopLoss and initialStopLoss will be different after some time
+        self._stopLoss = 0.0
+        self.target = 0.0  # Target price if applicable
+        self.cmp = 0.0  # Last traded price
+        self.stopLossPercentage = 0.0
+        self.stopLossUnderlyingPercentage = 0.0
 
         self.tradeState = TradeState.CREATED  # state of the trade
         self.timestamp = None  # Set this timestamp to strategy timestamp if you are not sure what to set
@@ -40,9 +43,9 @@ class Trade:
         self.exit = 0  # Exit price of the trade
         self.exitReason = None  # SL/Target/SquareOff/Any Other
 
-        self.entryOrder = []  # Object of Type ordermgmt.Order
-        self.slOrder = []  # Object of Type ordermgmt.Order
-        self.targetOrder = []  # Object of Type ordermgmt.Order
+        self.entryOrder: List[Order] = []  # Object of Type ordermgmt.Order
+        self.slOrder: List[Order] = []  # Object of Type ordermgmt.Order
+        self.targetOrder: List[Order] = []  # Object of Type ordermgmt.Order
 
     @property
     def stopLoss(self):
