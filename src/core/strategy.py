@@ -149,9 +149,7 @@ class BaseStrategy(ABC):
     def getVIXThreshold(self) -> float:
         return 0
 
-    async def run(self, runConfig) -> None:
-
-        self.runConfig = runConfig  # store run from algo config to getLots later
+    async def run(self) -> None:
 
         self.fromDict(self.strategyData)
 
@@ -164,8 +162,8 @@ class BaseStrategy(ABC):
             if self.strategySL > 0:
                 raise DeRegisterStrategyException("strategySL < 0. Can't run it.")
 
-            self.strategySL = self.strategySL * self.getVIXAdjustment(self.short_code)
-            self.strategyTarget = self.strategyTarget * self.getVIXAdjustment(self.short_code)
+            self.strategySL = self.strategySL * self.getVIXAdjustment()
+            self.strategyTarget = self.strategyTarget * self.getVIXAdjustment()
 
             if isMarketClosedForTheDay():
                 raise DeRegisterStrategyException("Market is closed, Can't run it")
@@ -209,7 +207,7 @@ class BaseStrategy(ABC):
             # track each trade and take necessary action
             self.trackAndUpdateAllTrades()
 
-            self.checkStrategyHealth()
+            # self.checkStrategyHealth()
 
             # Derived class specific implementation will be called when process() is called
             await self.process()
@@ -289,14 +287,14 @@ class BaseStrategy(ABC):
         trade.cmp = getCMP(self.short_code, trade.tradingSymbol)
         calculateTradePnl(trade)
 
-    def _trackSLOrder(self, trade):
+    def _trackSLOrder(self, trade: Trade):
         if trade.tradeState != TradeState.ACTIVE:
             for entryOrder in trade.entryOrder:
                 if entryOrder.orderStatus in [OrderStatus.OPEN, OrderStatus.TRIGGER_PENDING]:
                     return
         if trade.stopLoss == 0:
             # check if stoploss is yet to be calculated
-            newSL = self.strategyToInstanceMap.get(trade.strategy, None).getTrailingSL(trade)
+            newSL = self.getTrailingSL(trade)
             if newSL == 0:
                 return
             else:
@@ -307,7 +305,7 @@ class BaseStrategy(ABC):
             self.placeSLOrder(trade)
         else:
             slCompleted = 0
-            slAverage = 0
+            slAverage = 0.0
             slQuantity = 0
             slCancelled = 0
             slRejected = 0
@@ -326,11 +324,11 @@ class BaseStrategy(ABC):
                     newPrice = (slOrder.price + getCMP(self.short_code, trade.tradingSymbol)) * 0.5
                     omp = OrderModifyParams()
                     if trade.direction == Direction.LONG:
-                        omp.newTriggerPrice = roundToNSEPrice(newPrice) - 0.05
-                        omp.newPrice = roundToNSEPrice(newPrice * 0.99) - 0.05
+                        omp.newTriggerPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, newPrice) - 0.05
+                        omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, (newPrice * 0.99)) - 0.05
                     else:
-                        omp.newTriggerPrice = roundToNSEPrice(newPrice) + 0.05
-                        omp.newPrice = roundToNSEPrice(newPrice * 1.01) + 0.05
+                        omp.newTriggerPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, newPrice) + 0.05
+                        omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, newPrice * 1.01) + 0.05
 
                     self.modifyOrder(slOrder, omp, trade.qty)
 
@@ -359,7 +357,7 @@ class BaseStrategy(ABC):
             elif slRejected > 0:
                 strategy = self
                 for trade in strategy.trades:
-                    if trade.tradeState in (TradeState.ACTIVE):
+                    if trade.tradeState in [TradeState.ACTIVE]:
                         trade.target = getCMP(self.short_code, trade.tradingSymbol)
                         self.squareOffTrade(trade, TradeExitReason.TRADE_FAILED)
                     strategy.setDisabled()
@@ -368,10 +366,10 @@ class BaseStrategy(ABC):
             else:
                 self.checkAndUpdateTrailSL(trade)
 
-    def checkAndUpdateTrailSL(self, trade):
+    def checkAndUpdateTrailSL(self, trade: Trade):
         # Trail the SL if applicable for the trade
         strategyInstance = self
-        newTrailSL = roundToNSEPrice(strategyInstance.getTrailingSL(trade))
+        newTrailSL = roundToNSEPrice(self.short_code, trade.tradingSymbol, strategyInstance.getTrailingSL(trade))
         updateSL = False
         if newTrailSL > 0:
             if trade.direction == Direction.LONG and newTrailSL > trade.stopLoss:
@@ -389,7 +387,8 @@ class BaseStrategy(ABC):
         if updateSL == True:
             omp = OrderModifyParams()
             omp.newTriggerPrice = newTrailSL
-            omp.newPrice = roundToNSEPrice(omp.newTriggerPrice * (0.99 if trade.direction == Direction.LONG else 1.01))  # sl order direction is reverse
+            omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, omp.newTriggerPrice * (0.99 if trade.direction == Direction.LONG else 1.01))
+            # sl order direction is reverse
             try:
                 oldSL = trade.stopLoss
                 for slOrder in trade.slOrder:
@@ -400,7 +399,7 @@ class BaseStrategy(ABC):
             except Exception as e:
                 logging.error("TradeManager: Failed to modify SL order for tradeID %s : Error => %s", trade.tradeID, str(e))
 
-    def _trackTargetOrder(self, trade):
+    def _trackTargetOrder(self, trade: Trade):
         if trade.tradeState != TradeState.ACTIVE and self.isTargetORSLHit() is not None:
             return
         if trade.target == 0:  # Do not place Target order if no target provided
@@ -410,7 +409,7 @@ class BaseStrategy(ABC):
             self.placeTargetOrder(trade)
         else:
             targetCompleted = 0
-            targetAverage = 0
+            targetAverage = 0.0
             targetQuantity = 0
             targetCancelled = 0
             targetOpen = 0
@@ -453,7 +452,7 @@ class BaseStrategy(ABC):
                 # Cancel SL order
                 self.cancelOrders(trade.slOrder)
 
-    def cancelOrders(self, orders):
+    def cancelOrders(self, orders: List[Order]):
         if len(orders) == 0:
             return
         for order in orders:
@@ -466,13 +465,13 @@ class BaseStrategy(ABC):
                 raise (e)
             logging.info("TradeManager: Successfully cancelled order %s", order.orderId)
 
-    def cancelOrder(self, order):
+    def cancelOrder(self, order: Order):
         pass
 
     def modifyOrder(self, order: Order, omp: OrderModifyParams, qty: int):
         pass
 
-    def setTradeToCompleted(self, trade, exit, exitReason=None):
+    def setTradeToCompleted(self, trade: Trade, exit, exitReason=None):
         trade.tradeState = TradeState.COMPLETED
         trade.exit = exit
         trade.exitReason = exitReason if trade.exitReason == None else trade.exitReason
@@ -488,7 +487,7 @@ class BaseStrategy(ABC):
 
         trade = calculateTradePnl(trade)
 
-    def squareOffTrade(self, trade, reason=TradeExitReason.SQUARE_OFF):
+    def squareOffTrade(self, trade: Trade, reason=TradeExitReason.SQUARE_OFF):
         logging.info("TradeManager: squareOffTrade called for tradeID %s with reason %s", trade.tradeID, reason)
         if trade == None or trade.tradeState != TradeState.ACTIVE:
             return
@@ -517,7 +516,7 @@ class BaseStrategy(ABC):
             for targetOrder in trade.targetOrder:
                 if targetOrder.orderStatus == OrderStatus.OPEN:
                     omp = OrderModifyParams()
-                    omp.newPrice = roundToNSEPrice(trade.cmp * (0.99 if trade.direction == Direction.LONG else 1.01))
+                    omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, trade.cmp * (0.99 if trade.direction == Direction.LONG else 1.01))
                     self.modifyOrder(targetOrder, omp, trade.filledQty)
         elif trade.entry > 0:
             # Place new target order to exit position, adjust target to current market price
@@ -769,7 +768,7 @@ class BaseStrategy(ABC):
             except KeyError:
                 return lastStrike, lastPremium
 
-    def getVIXAdjustment(self, shortCode):
+    def getVIXAdjustment(self):
         return math.pow(getCMP(self.short_code, "INDIA VIX") / 16, 0.5)
 
     def asDict(self):

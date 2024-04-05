@@ -84,21 +84,22 @@ class BaseAlgo(threading.Thread, ABC):
 
     async def startStrategy(self, strategy: Type[BaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
         strategyInstance = strategy(short_code, self.brokerHandler, multiple)  # type: ignore
-        self.tradeManager.registerStrategy(strategyInstance)
-        strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
-        strategy_task = asyncio.create_task(strategyInstance.run(run))
-        strategy_task.set_name(strategyInstance.getName())
-        strategy_task.add_done_callback(self.handleException)
-        self.tasks.append(strategy_task)
+        self._startStrategy(strategyInstance, run)
 
     async def startTimedStrategy(self, strategy: Type[StartTimedBaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None):
         strategyInstance = strategy(short_code, startTimestamp, self.brokerHandler, multiple)
-        self.tradeManager.registerStrategy(strategyInstance)
+        self._startStrategy(strategyInstance, run)
+
+    def _startStrategy(self, strategyInstance, run):
         strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
-        strategy_task = asyncio.create_task(strategyInstance.run(run))
-        # strategy_task.set_name(strategyInstance.getName())
+        strategyInstance.runConfig = run
+
+        strategy_task = asyncio.create_task(strategyInstance.run())
+        strategy_task.set_name(strategyInstance.getName())
         strategy_task.add_done_callback(self.handleException)
+
         self.tasks.append(strategy_task)
+        self.tradeManager.registerStrategy(strategyInstance)
 
     def handleException(self, task):
         if task.exception() is not None:

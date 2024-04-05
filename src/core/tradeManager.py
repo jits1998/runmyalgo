@@ -10,7 +10,7 @@ import traceback
 from json import JSONEncoder
 from typing import Any, Dict, List
 
-import psycopg2
+import psycopg2  # type: ignore
 
 from broker import BaseHandler, BaseTicker, brokers
 from config import getServerConfig
