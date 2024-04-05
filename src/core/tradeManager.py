@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import os
 import time
 import traceback
-from datetime import datetime
 from json import JSONEncoder
 from typing import Any, Dict, List
 
@@ -88,23 +88,23 @@ class TradeManager:
                 self.questDBCursor = self.getQuestDBConnection()
 
             if not isTodayHoliday() and not isMarketClosedForTheDay() and not len(self.strategyToInstanceMap) == 0:
-                try:
-                    # Fetch all order details from broker and update orders in each trade
-                    self.fetchAndUpdateAllTradeOrders()
-                    # track each trade and take necessary action
-                    self.trackAndUpdateAllTrades()
+                # try:
+                #     # Fetch all order details from broker and update orders in each trade
+                #     self.fetchAndUpdateAllTradeOrders()
+                #     # track each trade and take necessary action
+                #     self.trackAndUpdateAllTrades()
 
-                    self.checkStrategyHealth()
-                    # print ( "%s =>%f :: %f" %(datetime.now().strftime("%H:%M:%S"), pe_vega, ce_vega))
-                except Exception as e:
-                    traceback.print_exc()
-                    logging.exception("Exception in TradeManager Main thread")
+                #     self.checkStrategyHealth()
+                #     # print ( "%s =>%f :: %f" %(datetime.now().strftime("%H:%M:%S"), pe_vega, ce_vega))
+                # except Exception as e:
+                #     traceback.print_exc()
+                #     logging.exception("Exception in TradeManager Main thread")
 
                 # save updated data to json file
                 self.saveAllTradesToFile()
                 self.saveAllStrategiesToFile()
 
-            now = datetime.now()
+            now = datetime.datetime.now()
             waitSeconds = 5 - (now.second % 5)
             await asyncio.sleep(waitSeconds)
 
@@ -187,7 +187,7 @@ class TradeManager:
     def loadAllStrategiesFromFile(self):
         strategiesFilePath = self.getStrategiesFilepath()
         if os.path.exists(strategiesFilePath) == False:
-            logging.warn("TradeManager: loadAllStrategiesFromFile() STrategies Filepath %s does not exist", strategiesFilePath)
+            logging.warn("TradeManager: loadAllStrategiesFromFile() Strategies Filepath %s does not exist", strategiesFilePath)
             return
         sFile = open(strategiesFilePath, "r")
         self.strategiesData = json.loads(sFile.read())

@@ -1,4 +1,5 @@
 import calendar
+import functools
 import logging
 import time
 from datetime import datetime, timedelta
@@ -12,6 +13,7 @@ timeFormat = "%H:%M:%S"
 dateTimeFormat = "%Y-%m-%d %H:%M:%S"
 
 
+@functools.lru_cache
 def getUserDetails(short_code: str) -> UserDetails:
     userConfig: dict = getUserConfig(short_code)
 
@@ -21,7 +23,7 @@ def getUserDetails(short_code: str) -> UserDetails:
     userDetails.clientID = userConfig["clientID"]
     userDetails.secret = userConfig["appSecret"]
     userDetails.key = userConfig["appKey"]
-    userDetails.multiple = userConfig["multiple"]
+    userDetails.multiple = int(userConfig["multiple"])
     userDetails.algoType = userConfig["algoType"]
 
     return userDetails

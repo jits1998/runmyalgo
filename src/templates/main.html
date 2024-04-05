@@ -252,14 +252,14 @@
         <div class="row gx-0">
           <div class="text-center col h6">{{strategies|length}} Strategies <span class="d-none d-md-inline">will be executed</span></div>
           <div class="text-center col h6 d-none d-md-block">{% if session['access_token'] %}
-            Available Margin:: {{"{:,.2f}".format((
+            {# Available Margin:: {{"{:,.2f}".format((
                   margins['equity']['available']['collateral']
                   + margins['equity']['available']['opening_balance']
-                  - margins['equity']['utilised']['debits'])/100000)}}
-                {% endif %}
+                  - margins['equity']['utilised']['debits'])/100000)}}#}
+                {% endif %} 
           </div>
-          <div class="text-center col d-none d-md-block">{{ltps["exchange_timestamp"].strftime('%A, %b %d %Y %X')}}</div>
-          <div class="text-center col d-md-none">{{ltps["exchange_timestamp"].strftime('%a, %b %d %H:%M')}}</div>
+          {# <div class="text-center col d-none d-md-block">{{ltps["exchange_timestamp"].strftime('%A, %b %d %Y %X')}}</div> 
+          <div class="text-center col d-md-none">{{ltps["exchange_timestamp"].strftime('%a, %b %d %H:%M')}}</div>#}
           
       </div>
         

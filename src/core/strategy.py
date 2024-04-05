@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import logging
 import math
 import time
@@ -75,9 +76,10 @@ class BaseStrategy(ABC):
     def setDisabled(self) -> None:
         self.enabled = False
 
-    def getMultiple(self) -> float:
-        return float(self.multiple)
+    def getMultiple(self) -> int:
+        return self.multiple
 
+    @functools.lru_cache
     def getLots(self) -> int:
         lots = self._getLots(self.getName(), self.symbol, self.expiryDay) * self.getMultiple()
 
@@ -876,7 +878,7 @@ class TestStrategy(BaseStrategy):
         else:
             TestStrategy.__instance[short_code] = self
         # Call Base class constructor
-        super().__init__("TestStrategy", short_code, multiple)  # type: ignore
+        super().__init__("TestStrategy", short_code, handler, multiple)  # type: ignore
         # Initialize all the properties specific to this strategy
         self.productType = ProductType.MIS
         self.symbols = []

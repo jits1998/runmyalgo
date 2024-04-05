@@ -11,6 +11,7 @@ from algos import BaseAlgo, getAlgo
 from app import flask_app as app
 from app import systemConfig
 from broker import BaseLogin, brokers, load_broker_module
+from instruments import symbolToCMPMap
 from utils import getUserDetails
 
 
@@ -42,12 +43,12 @@ def home(short_code):
         return render_template(
             "main.html",
             strategies=trademanager.strategyToInstanceMap.values() if trademanager is not None else {},
-            ltps=trademanager.symbolToCMPMap if trademanager is not None else {},
+            ltps=symbolToCMPMap[short_code] if trademanager is not None else {},
             algoStarted=True if trademanager is not None else False,
             isReady=True if trademanager is not None and trademanager.isReady else False,
             # margins=(brokerHandler.margins() if brokerHandler is not None else {}),
-            # positions=(brokerHandler.positions() if brokerHandler is not None else {}),
-            # orders=(brokerHandler.orders() if brokerHandler is not None else {}),
+            positions={},  # (brokerHandler.positions() if brokerHandler is not None else {}),
+            orders={},  # (brokerHandler.orders() if brokerHandler is not None else {}),
             multiple=userDetails.multiple,
             short_code=short_code,
         )

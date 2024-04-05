@@ -3,9 +3,8 @@ import logging
 import socketio  # type: ignore[import-untyped]
 
 from broker import BaseTicker
+from instruments import getInstrumentDataBySymbol, getInstrumentDataByToken
 from models import TickData
-
-from instruments import getInstrumentDataByToken, getInstrumentDataBySymbol
 
 
 class ICICITicker(BaseTicker):
@@ -28,6 +27,7 @@ class ICICITicker(BaseTicker):
             self.ticker.ws_connect()
 
             def on_ticks(bTick):
+                logging.debug(bTick["symbol"] + " => " + str(bTick["last"]))
                 # convert broker specific Ticks to our system specific Ticks (models.TickData) and pass to super class function
                 ticks = []
                 isd = getInstrumentDataByToken(self.short_code, bTick["symbol"][4:])
