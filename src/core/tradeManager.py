@@ -74,8 +74,8 @@ class TradeManager:
         self.loadAllTradesFromFile()
         self.loadAllStrategiesFromFile()
 
-        # sleep for 2 seconds for ticker to update ltp map
-        time.sleep(2)
+        while len(self.symbolToCMPMap) < 4:
+            time.sleep(2)
 
         self.isReady = True
 
