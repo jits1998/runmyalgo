@@ -27,6 +27,12 @@ class Direction(Enum):
     SHORT = "SHORT"
 
 
+class OrderAs(Enum):
+    ENTRY = "ENTRY"
+    SL = "SL"
+    TARGET = "TARGET"
+
+
 class OrderStatus(Enum):
     OPEN = "OPEN"
     COMPLETE = "COMPLETE"
