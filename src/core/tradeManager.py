@@ -14,6 +14,7 @@ import psycopg2  # type: ignore
 
 from broker import BaseHandler, BaseTicker, brokers
 from config import get_server_config
+from core import TradeEncoder
 from core.strategy import BaseStrategy
 from instruments import round_to_ticksize
 from instruments import symbol_to_CMP as cmp
@@ -28,15 +29,6 @@ from utils import (
     is_today_holiday,
     wait_till_market_open,
 )
-
-
-class TradeEncoder(JSONEncoder):
-    def default(self, o):
-        if isinstance(o, (datetime.date, datetime.datetime)):
-            return o.isoformat()
-        if isinstance(o, (BaseStrategy)):
-            return o.asDict()
-        return o.__dict__
 
 
 class TradeManager:

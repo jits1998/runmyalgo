@@ -88,19 +88,19 @@ class ZerodhaTicker(BaseTicker):
         self.on_new_ticks(ticks)
 
     def on_connect(self, ws, response):
-        self.on_connect()
+        self.onConnect()
 
     def on_close(self, ws, code, reason):
-        self.on_disconnect(code, reason)
+        self.onDisconnect(code, reason)
 
     def on_error(self, ws, code, reason):
-        self.on_error(code, reason)
+        self.onError(code, reason)
 
     def on_reconnect(self, ws, attemptsCount):
-        self.on_reconnect(attemptsCount)
+        self.onReconnect(attemptsCount)
 
     def on_noreconnect(self, ws):
-        self.on_max_reconnect_attempts()
+        self.onMaxReconnectsAttempt()
 
     def on_order_update(self, ws, data):
-        self.on_order_update(data)
+        self.onOrderUpdate(data)

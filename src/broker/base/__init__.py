@@ -125,21 +125,21 @@ class BaseTicker(ABC):
                 except Exception as e:
                     logging.error("BaseTicker: Exception from listener callback function. Error => %s", str(e))
 
-    def on_connect(self) -> None:
+    def onConnect(self) -> None:
         logging.info("Ticker connection successful.")
 
-    def on_disconnect(self, code, reason) -> None:
+    def onDisconnect(self, code, reason) -> None:
         logging.error("Ticker got disconnected. code = %d, reason = %s", code, reason)
 
-    def on_error(self, code, reason) -> None:
+    def onError(self, code, reason) -> None:
         logging.error("Ticker errored out. code = %d, reason = %s", code, reason)
 
-    def on_reconnect(self, attemptsCount) -> None:
+    def onReconnect(self, attemptsCount) -> None:
         logging.warn("Ticker reconnecting.. attemptsCount = %d", attemptsCount)
 
-    def on_max_reconnect_attempts(self) -> None:
+    def onMaxReconnectsAttempt(self) -> None:
         logging.error("Ticker max auto reconnects attempted and giving up..")
 
-    def on_order_update(self, data: dict) -> None:
+    def onOrderUpdate(self, data: dict) -> None:
         # logging.info('Ticker: order update %s', data)
         ...

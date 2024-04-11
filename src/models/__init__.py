@@ -84,3 +84,8 @@ class TradeState(Enum):
     COMPLETED = "completed"  # completed when exits due to SL/Target/SquareOff
     CANCELLED = "cancelled"  # cancelled/rejected comes under this state only
     DISABLED = "disabled"  # disable trade if not triggered within the time limits or for any other reason
+
+
+class AlgoStatus(Enum):
+    INITIATED = "Initiated"
+    STARTED = "Started"
