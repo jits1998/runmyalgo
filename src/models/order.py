@@ -11,7 +11,7 @@ class Order:
         self.triggerPrice = orderInputParams.triggerPrice if orderInputParams != None else 0  # Applicable in case of SL orders
         self.qty = orderInputParams.qty if orderInputParams != None else 0
         self.tag = orderInputParams.tag if orderInputParams != None else None
-        self.orderId = None  # The order id received from broker after placing the order
+        self.orderId = ""  # The order id received from broker after placing the order
         self.orderStatus = None  # One of the status defined in ordermgmt.OrderStatus
         self.averagePrice = 0  # Average price at which the order is filled
         self.filledQty = 0  # Filled quantity
