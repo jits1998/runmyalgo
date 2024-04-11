@@ -1,26 +1,26 @@
 import logging
 
 from broker.base import BaseOrderManager
-from instruments import getInstrumentDataBySymbol
+from instruments import get_instrument_data_by_symbol
 from models import Direction, OrderStatus, OrderType, ProductType
 from models.order import Order, OrderInputParams
-from utils import getEpoch
+from utils import get_epoch
 
 
 class ZerodhaOrderManager(BaseOrderManager):
 
-    def __init__(self, short_code, brokerHandle):
-        super().__init__("zerodha", brokerHandle)
+    def __init__(self, short_code, broker_handle):
+        super().__init__("zerodha", broker_handle)
         self.short_code = short_code
 
-    def placeOrder(self, orderInputParams):
+    def place_order(self, orderInputParams):
         logging.debug("%s:%s:: Going to place order with params %s", self.broker, self.short_code, orderInputParams)
-        kite = self.brokerHandle
+        kite = self.broker_handle
         orderInputParams.qty = int(orderInputParams.qty)
         import math
 
-        freeze_limit = 900 if orderInputParams.tradingSymbol.startswith("BANK") else 1800
-        lot_size = getInstrumentDataBySymbol(self.short_code, orderInputParams.tradingSymbol)["lot_size"]
+        freeze_limit = 900 if orderInputParams.trading_symbol.startswith("BANK") else 1800
+        lot_size = get_instrument_data_by_symbol(self.short_code, orderInputParams.trading_symbol)["lot_size"]
         leg_count = max(math.ceil(orderInputParams.qty / freeze_limit), 2)
         slice = orderInputParams.qty / leg_count
         iceberg_quantity = math.ceil(slice / lot_size) * lot_size
@@ -35,21 +35,21 @@ class ZerodhaOrderManager(BaseOrderManager):
                 iceberg_legs=iceberg_legs,
                 iceberg_quantity=iceberg_quantity,
                 exchange=orderInputParams.exchange if orderInputParams.isFnO == True else kite.EXCHANGE_NSE,
-                tradingsymbol=orderInputParams.tradingSymbol,
-                transaction_type=self.convertToBrokerDirection(orderInputParams.direction),
+                tradingsymbol=orderInputParams.trading_symbol,
+                transaction_type=self.convert_to_broker_direction(orderInputParams.direction),
                 quantity=orderInputParams.qty,
                 price=orderInputParams.price,
                 trigger_price=orderInputParams.triggerPrice,
-                product=self.convertToBrokerProductType(orderInputParams.productType),
-                order_type=self.convertToBrokerOrderType(orderInputParams.orderType),
+                product=self.convert_to_broker_product(orderInputParams.productType),
+                order_type=self.covert_to_broker_order(orderInputParams.orderType),
                 tag=orderInputParams.tag[:20],
             )
 
             logging.info("%s:%s:: Order placed successfully, orderId = %s with tag: %s", self.broker, self.short_code, orderId, orderInputParams.tag)
             order = Order(orderInputParams)
             order.orderId = orderId
-            order.orderPlaceTimestamp = getEpoch()
-            order.lastOrderUpdateTimestamp = getEpoch()
+            order.orderPlaceTimestamp = get_epoch()
+            order.lastOrderUpdateTimestamp = get_epoch()
             return order
         except Exception as e:
             if "Too many requests" in str(e):
@@ -57,15 +57,15 @@ class ZerodhaOrderManager(BaseOrderManager):
                 import time
 
                 time.sleep(1)
-                self.placeOrder(orderInputParams)
+                self.place_order(orderInputParams)
             logging.info("%s:%s Order placement failed: %s", self.broker, self.short_code, str(e))
             if "Trigger price for stoploss" in str(e):
                 orderInputParams.orderType = OrderType.LIMIT
-                return self.placeOrder(orderInputParams)
+                return self.place_order(orderInputParams)
             else:
                 raise Exception(str(e))
 
-    def modifyOrder(self, order, orderModifyParams, tradeQty):
+    def modify_order(self, order, orderModifyParams, tradeQty):
         logging.info("%s:%s:: Going to modify order with params %s", self.broker, self.short_code, orderModifyParams)
 
         if order.orderType == OrderType.SL_LIMIT and orderModifyParams.newTriggerPrice == order.triggerPrice:
@@ -77,8 +77,8 @@ class ZerodhaOrderManager(BaseOrderManager):
             logging.info("%s:%s:: Not Going to modify order with params %s", self.broker, self.short_code, orderModifyParams)
             return order
 
-        kite = self.brokerHandle
-        freeze_limit = 900 if order.tradingSymbol.startswith("BANK") else 1800
+        kite = self.broker_handle
+        freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
 
         try:
             orderId = kite.modify_order(
@@ -91,7 +91,7 @@ class ZerodhaOrderManager(BaseOrderManager):
             )
 
             logging.info("%s:%s Order modified successfully for orderId = %s", self.broker, self.short_code, orderId)
-            order.lastOrderUpdateTimestamp = getEpoch()
+            order.lastOrderUpdateTimestamp = get_epoch()
             return order
         except Exception as e:
             if "Too many requests" in str(e):
@@ -99,14 +99,14 @@ class ZerodhaOrderManager(BaseOrderManager):
                 import time
 
                 time.sleep(1)
-                self.modifyOrder(order, orderModifyParams, tradeQty)
+                self.modify_order(order, orderModifyParams, tradeQty)
             logging.info("%s:%s Order %s modify failed: %s", self.broker, self.short_code, order.orderId, str(e))
             raise Exception(str(e))
 
     def modifyOrderToMarket(self, order):
         raise Exception("Method not to be called")
         # logging.debug('%s:%s:: Going to modify order with params %s', self.broker, self.short_code)
-        # kite = self.brokerHandle
+        # kite = self.broker_handle
         # try:
         #   orderId = kite.modify_order(
         #     variety= kite.VARIETY_REGULAR,
@@ -120,15 +120,15 @@ class ZerodhaOrderManager(BaseOrderManager):
         #   logging.info('%s:%s Order modify to market failed: %s', self.broker, self.short_code, str(e))
         #   raise Exception(str(e))
 
-    def cancelOrder(self, order):
+    def cancel_order(self, order):
         logging.debug("%s:%s Going to cancel order %s", self.broker, self.short_code, order.orderId)
-        kite = self.brokerHandle
-        freeze_limit = 900 if order.tradingSymbol.startswith("BANK") else 1800
+        kite = self.broker_handle
+        freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
         try:
             orderId = kite.cancel_order(variety=kite.VARIETY_REGULAR if order.qty <= freeze_limit else kite.VARIETY_ICEBERG, order_id=order.orderId)
 
             logging.info("%s:%s Order cancelled successfully, orderId = %s", self.broker, self.short_code, orderId)
-            order.lastOrderUpdateTimestamp = getEpoch()
+            order.lastOrderUpdateTimestamp = get_epoch()
             return order
         except Exception as e:
             if "Too many requests" in str(e):
@@ -136,13 +136,13 @@ class ZerodhaOrderManager(BaseOrderManager):
                 import time
 
                 time.sleep(1)
-                self.cancelOrder(order)
+                self.cancel_order(order)
             logging.info("%s:%s Order cancel failed: %s", self.broker, self.short_code, str(e))
             raise Exception(str(e))
 
-    def fetchAndUpdateAllOrderDetails(self, orders):
+    def fetch_update_all_orders(self, orders):
         logging.debug("%s:%s Going to fetch order book", self.broker, self.short_code)
-        kite = self.brokerHandle
+        kite = self.broker_handle
         orderBook = None
         try:
             orderBook = kite.orders()
@@ -181,25 +181,25 @@ class ZerodhaOrderManager(BaseOrderManager):
                 logging.debug("%s:%s:%s Updated order %s", self.broker, self.short_code, orders[foundOrder], foundOrder)
                 numOrdersUpdated += 1
             elif foundChildOrder != None:
-                oip = OrderInputParams(parentOrder.tradingSymbol)
+                oip = OrderInputParams(parentOrder.trading_symbol)
                 oip.exchange = parentOrder.exchange
-                oip.productType = parentOrder.productType
-                oip.orderType = parentOrder.orderType
+                oip.product_type = parentOrder.productType
+                oip.order_type = parentOrder.orderType
                 oip.price = parentOrder.price
-                oip.triggerPrice = parentOrder.triggerPrice
+                oip.trigger_price = parentOrder.triggerPrice
                 oip.qty = parentOrder.qty
                 oip.tag = parentOrder.tag
-                oip.productType = parentOrder.productType
+                oip.product_type = parentOrder.productType
                 order = Order(oip)
                 order.orderId = bOrder["order_id"]
                 order.parentOrderId = parentOrder.orderId
-                order.orderPlaceTimestamp = getEpoch()  # TODO should get from bOrder
+                order.orderPlaceTimestamp = get_epoch()  # TODO should get from bOrder
                 missingOrders.append(order)
 
         return missingOrders
 
-    def convertToBrokerProductType(self, productType):
-        kite = self.brokerHandle
+    def convert_to_broker_product(self, productType):
+        kite = self.broker_handle
         if productType == ProductType.MIS:
             return kite.PRODUCT_MIS
         elif productType == ProductType.NRML:
@@ -208,8 +208,8 @@ class ZerodhaOrderManager(BaseOrderManager):
             return kite.PRODUCT_CNC
         return None
 
-    def convertToBrokerOrderType(self, orderType):
-        kite = self.brokerHandle
+    def covert_to_broker_order(self, orderType):
+        kite = self.broker_handle
         if orderType == OrderType.LIMIT:
             return kite.ORDER_TYPE_LIMIT
         elif orderType == OrderType.MARKET:
@@ -220,8 +220,8 @@ class ZerodhaOrderManager(BaseOrderManager):
             return kite.ORDER_TYPE_SL
         return None
 
-    def convertToBrokerDirection(self, direction):
-        kite = self.brokerHandle
+    def convert_to_broker_direction(self, direction):
+        kite = self.broker_handle
         if direction == Direction.LONG:
             return kite.TRANSACTION_TYPE_BUY
         elif direction == Direction.SHORT:

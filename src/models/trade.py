@@ -3,19 +3,21 @@ import uuid
 from datetime import datetime
 from typing import List
 
-from models import ProductType, TradeState
+from models import Direction, ProductType, TradeState
 from models.order import Order
 
 
 class Trade:
-    def __init__(self, tradingSymbol=None, strategy="") -> None:
+    direction: Direction
+
+    def __init__(self, trading_symbol=None, strategy="") -> None:
         self.exchange = "NSE"
         self.tradeID = ((strategy + ":") if not strategy == "" else "") + str(uuid.uuid4())  # Unique ID for each trade
-        self.tradingSymbol = tradingSymbol
+        self.trading_symbol = trading_symbol
         self.strategy = strategy
-        self.direction = ""
+        self.direction
         self.productType = ProductType.MIS
-        self.isFutures = False  # Futures trade
+        self.is_futures = False  # Futures trade
         self.isOptions = False  # Options trade
         self.optionType = None  # CE/PE. Applicable only if isOptions is True
         self.underLying = None  # NIFTY BANK / NIFTY 50, only if isOptions or isFutures set to True
@@ -25,7 +27,7 @@ class Trade:
         self.entry = 0.0  # Actual entry. This will be different from requestedEntry if the order placed is Market order
         self.qty = 0  # Requested quantity
         self.filledQty = 0  # In case partial fill qty is not equal to filled quantity
-        self.initialStopLoss = 0.0  # Initial stop loss
+        self.initial_stoploss = 0.0  # Initial stop loss
         # This is the current stop loss. In case of trailing SL the current stopLoss and initialStopLoss will be different after some time
         self._stopLoss = 0.0
         self.target = 0.0  # Target price if applicable
@@ -43,7 +45,7 @@ class Trade:
         self.exit = 0  # Exit price of the trade
         self.exitReason = None  # SL/Target/SquareOff/Any Other
 
-        self.entryOrder: List[Order] = []  # Object of Type ordermgmt.Order
+        self.entry_orders: List[Order] = []  # Object of Type ordermgmt.Order
         self.slOrder: List[Order] = []  # Object of Type ordermgmt.Order
         self.targetOrder: List[Order] = []  # Object of Type ordermgmt.Order
 
@@ -60,7 +62,7 @@ class Trade:
             return False
         if self.tradeID == trade.tradeID:
             return True
-        if self.tradingSymbol != trade.tradingSymbol:
+        if self.trading_symbol != trade.trading_symbol:
             return False
         if self.strategy != trade.strategy:
             return False
@@ -89,7 +91,7 @@ class Trade:
             + ", state="
             + self.tradeState
             + ", symbol="
-            + self.tradingSymbol
+            + self.trading_symbol
             + ", strategy="
             + self.strategy
             + ", direction="

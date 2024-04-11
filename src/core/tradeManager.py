@@ -13,20 +13,20 @@ from typing import Any, Dict, List
 import psycopg2  # type: ignore
 
 from broker import BaseHandler, BaseTicker, brokers
-from config import getServerConfig
+from config import get_server_config
 from core.strategy import BaseStrategy
-from instruments import roundToNSEPrice
-from instruments import symbolToCMPMap as cmp
+from instruments import round_to_ticksize
+from instruments import symbol_to_CMP as cmp
 from models import Direction, OrderType, TradeState
 from models.order import Order, OrderInputParams
 from models.trade import Trade
 from utils import (
-    getEpoch,
-    getTodayDateStr,
-    getUserDetails,
-    isMarketClosedForTheDay,
-    isTodayHoliday,
-    waitTillMarketOpens,
+    get_epoch,
+    get_today_date_str,
+    get_user_details,
+    is_market_closed_for_the_day,
+    is_today_holiday,
+    wait_till_market_open,
 )
 
 
@@ -41,53 +41,54 @@ class TradeEncoder(JSONEncoder):
 
 class TradeManager:
 
-    strategyToInstanceMap: Dict[str, BaseStrategy] = {}
-    symbolToCMPMap: Dict[str, float] = {}
+    strategy_to_instance: Dict[str, BaseStrategy] = {}
+    symbol_to_cmp: Dict[str, float] = {}
     ticker: BaseTicker
 
-    def __init__(self, short_code: str, access_token: str, brokerHandler: BaseHandler) -> None:
+    def __init__(self, short_code: str, access_token: str, broker_handler: BaseHandler) -> None:
         self.short_code = short_code
         self.access_token = access_token
-        self.symbolToCMPMap = cmp[short_code]
-        self.orderQueue: asyncio.Queue[Trade] = asyncio.Queue()
-        self.questDBCursor = self.getQuestDBConnection()
-        self.strategiesData: Dict[str, Any] = {}
+        self.symbol_to_cmp = cmp[short_code]
+        self.order_queue: asyncio.Queue[Trade] = asyncio.Queue()
+        self.questDBCursor = self.get_questdb_connection()
+        self.strategies_data: Dict[str, Any] = {}
         self.trades: List[Trade] = []
+        self.orders: Dict[str, Order] = {}
 
-        serverConfig = getServerConfig()
-        tradesDir = os.path.join(serverConfig["deployDir"], "trades")
-        self.intradayTradesDir = os.path.join(tradesDir, getTodayDateStr())
+        server_config = get_server_config()
+        trades_dir = os.path.join(server_config["deploy_dir"], "trades")
+        self.intradayTradesDir = os.path.join(trades_dir, get_today_date_str())
         if os.path.exists(self.intradayTradesDir) == False:
             logging.info("TradeManager: Intraday Trades Directory %s does not exist. Hence going to create.", self.intradayTradesDir)
             os.makedirs(self.intradayTradesDir)
 
-        self.order_manager = brokers[getUserDetails(short_code).broker]["order_manager"](short_code, brokerHandler)
+        self.order_manager = brokers[get_user_details(short_code).broker]["order_manager"](short_code, broker_handler)
 
-        self.ticker = brokers[getUserDetails(short_code).broker]["ticker"](short_code, brokerHandler)
+        self.ticker = brokers[get_user_details(short_code).broker]["ticker"](short_code, broker_handler)
 
-        self.ticker.startTicker(getUserDetails(short_code).key, self.access_token)
-        self.ticker.registerListener(self.tickerListener)
+        self.ticker.start_ticker(get_user_details(short_code).key, self.access_token)
+        self.ticker.register_listener(self.ticker_listener)
 
-        self.ticker.registerSymbols(["NIFTY 50", "NIFTY BANK", "INDIA VIX", "NIFTY FIN SERVICE"])
+        self.ticker.register_symbols(["NIFTY 50", "NIFTY BANK", "INDIA VIX", "NIFTY FIN SERVICE"])
 
         # Load all trades from json files to app memory
-        self.loadAllTradesFromFile()
-        self.loadAllStrategiesFromFile()
+        self.load_trades_from_file()
+        self.load_strategies_from_file()
 
-        while len(self.symbolToCMPMap) < 4:
+        while len(self.symbol_to_cmp) < 4:
             time.sleep(2)
 
-        self.isReady = True
+        self.is_ready = True
 
-        waitTillMarketOpens("TradeManager")
+        wait_till_market_open("TradeManager")
 
     async def run(self):  # track and update trades in a loop
         while True:
 
             if self.questDBCursor is None or self.questDBCursor.closed:
-                self.questDBCursor = self.getQuestDBConnection()
+                self.questDBCursor = self.get_questdb_connection()
 
-            if not isTodayHoliday() and not isMarketClosedForTheDay() and not len(self.strategyToInstanceMap) == 0:
+            if not is_today_holiday() and not is_market_closed_for_the_day() and not len(self.strategy_to_instance) == 0:
                 # try:
                 #     # Fetch all order details from broker and update orders in each trade
                 #     self.fetchAndUpdateAllTradeOrders()
@@ -101,141 +102,141 @@ class TradeManager:
                 #     logging.exception("Exception in TradeManager Main thread")
 
                 # save updated data to json file
-                self.saveAllTradesToFile()
-                self.saveAllStrategiesToFile()
+                self.save_trades_to_file()
+                self.save_strategies_to_file()
 
             now = datetime.datetime.now()
             waitSeconds = 5 - (now.second % 5)
             await asyncio.sleep(waitSeconds)
 
-    def squareOffTrade(self, trade, exitReason):
+    def square_off_trade(self, trade, exitReason):
         pass
 
-    def squareOffStrategy(self, strategyInstance, exitReason):
+    def square_off_strategy(self, strategyInstance, exitReason):
         pass
 
-    async def placeOrders(self):
+    async def place_orders(self):
         while True:
-            trade: Trade = await self.orderQueue.get()  # type: ignore
+            trade: Trade = await self.order_queue.get()  # type: ignore
             try:
-                strategyInstance = self.strategyToInstanceMap[trade.strategy]
+                strategyInstance = self.strategy_to_instance[trade.strategy]
                 if strategyInstance.shouldPlaceTrade(trade):
                     # place the longTrade
-                    isSuccess = self.executeTrade(trade)
+                    isSuccess = self.execute_trade(trade)
                     if isSuccess == True:
                         # set longTrade state to ACTIVE
                         trade.tradeState = TradeState.ACTIVE
-                        trade.startTimestamp = getEpoch()
+                        trade.startTimestamp = get_epoch()
                         continue
             except Exception as e:
                 logging.warn(str(e))
 
             trade.tradeState = TradeState.DISABLED
 
-    def executeTrade(self, trade):
+    def execute_trade(self, trade: Trade):
         logging.info("TradeManager: Execute trade called for %s", trade)
-        trade.initialStopLoss = trade.stopLoss
+        trade.initial_stoploss = trade.stopLoss
         # Create order input params object and place order
-        oip = OrderInputParams(trade.tradingSymbol)
+        oip = OrderInputParams(trade.trading_symbol)
         oip.exchange = trade.exchange
         oip.direction = trade.direction
-        oip.productType = trade.productType
-        oip.orderType = OrderType.LIMIT if trade.placeMarketOrder == True else OrderType.SL_LIMIT
-        oip.triggerPrice = roundToNSEPrice(trade.requestedEntry)
-        oip.price = roundToNSEPrice(self.short_code, trade.tradingSymbol, trade.requestedEntry * (1.01 if trade.direction == Direction.LONG else 0.99))
+        oip.product_type = trade.productType
+        oip.order_type = OrderType.LIMIT if trade.placeMarketOrder == True else OrderType.SL_LIMIT
+        oip.trigger_price = round_to_ticksize(self.short_code, trade.trading_symbol, trade.requestedEntry)
+        oip.price = round_to_ticksize(self.short_code, trade.trading_symbol, trade.requestedEntry * (1.01 if trade.direction == Direction.LONG else 0.99))
         oip.qty = trade.qty
         oip.tag = trade.strategy
-        if trade.isFutures == True or trade.isOptions == True:
-            oip.isFnO = True
+        if trade.is_futures == True or trade.isOptions == True:
+            oip.is_fno = True
         try:
-            placedOrder = self.order_manager.placeOrder(oip)
-            trade.entryOrder.append(placedOrder)
-            self.orders[placedOrder.orderId] = placedOrder
+            placed_order = self.order_manager.place_order(oip)
+            trade.entry_orders.append(placed_order)
+            self.orders[placed_order.orderId] = placed_order
         except Exception as e:
             logging.error("TradeManager: Execute trade failed for tradeID %s: Error => %s", trade.tradeID, str(e))
             return False
 
-        logging.info("TradeManager: Execute trade successful for %s and entryOrder %s", trade, trade.entryOrder)
+        logging.info("TradeManager: Execute trade successful for %s and entryOrder %s", trade, trade.entry_orders)
         return True
 
-    def registerStrategy(self, strategyInstance):
-        self.strategyToInstanceMap[strategyInstance.getName()] = strategyInstance
-        strategyInstance.strategyData = self.strategiesData.get(strategyInstance.getName(), None)
-        strategyInstance.orderQueue = self.orderQueue
+    def register_strategy(self, strategy_instance):
+        self.strategy_to_instance[strategy_instance.getName()] = strategy_instance
+        strategy_instance.strategyData = self.strategies_data.get(strategy_instance.getName(), None)
+        strategy_instance.orderQueue = self.order_queue
 
-    def deRgisterStrategy(self, strategyInstanceName):
-        del self.strategyToInstanceMap[strategyInstanceName]
+    def dergister_strategy(self, strategy_name):
+        del self.strategy_to_instance[strategy_name]
 
-    def loadAllTradesFromFile(self):
-        tradesFilepath = self.getTradesFilepath()
-        if os.path.exists(tradesFilepath) == False:
-            logging.warn("TradeManager: loadAllTradesFromFile() Trades Filepath %s does not exist", tradesFilepath)
+    def load_trades_from_file(self):
+        trades_filepath = self.get_trades_filepath()
+        if os.path.exists(trades_filepath) == False:
+            logging.warn("TradeManager: load_trades_from_file() Trades Filepath %s does not exist", trades_filepath)
             return
         self.trades = []
-        tFile = open(tradesFilepath, "r")
+        tFile = open(trades_filepath, "r")
         tradesData = json.loads(tFile.read())
         for tr in tradesData:
-            trade = self.convertJSONToTrade(tr)
-            logging.info("loadAllTradesFromFile trade => %s", trade)
+            trade = self.convert_json_to_trade(tr)
+            logging.info("load_trades_from_file trade => %s", trade)
             self.trades.append(trade)
-            if trade.tradingSymbol not in self.registeredSymbols:
+            if trade.trading_symbol not in self.registeredSymbols:
                 # Algo register symbols with ticker
-                self.ticker.registerSymbols([trade.tradingSymbol])
-                self.registeredSymbols.append(trade.tradingSymbol)
-        logging.info("TradeManager: Successfully loaded %d trades from json file %s", len(self.trades), tradesFilepath)
+                self.ticker.register_symbols([trade.trading_symbol])
+                self.registeredSymbols.append(trade.trading_symbol)
+        logging.info("TradeManager: Successfully loaded %d trades from json file %s", len(self.trades), trades_filepath)
 
-    def loadAllStrategiesFromFile(self):
-        strategiesFilePath = self.getStrategiesFilepath()
-        if os.path.exists(strategiesFilePath) == False:
-            logging.warn("TradeManager: loadAllStrategiesFromFile() Strategies Filepath %s does not exist", strategiesFilePath)
+    def load_strategies_from_file(self):
+        strategies_filePath = self.get_strategies_filepath()
+        if os.path.exists(strategies_filePath) == False:
+            logging.warn("TradeManager: load_strategies_from_file() Strategies Filepath %s does not exist", strategies_filePath)
             return
-        sFile = open(strategiesFilePath, "r")
-        self.strategiesData = json.loads(sFile.read())
-        logging.info("TradeManager: Successfully loaded %d strategies from json file %s", len(self.strategiesData), strategiesFilePath)
+        sFile = open(strategies_filePath, "r")
+        self.strategies_data = json.loads(sFile.read())
+        logging.info("TradeManager: Successfully loaded %d strategies from json file %s", len(self.strategies_data), strategies_filePath)
 
-    def getTradesFilepath(self):
+    def get_trades_filepath(self):
         tradesFilepath = os.path.join(
-            self.intradayTradesDir, getUserDetails(self.short_code).broker + "_" + getUserDetails(self.short_code).clientID + ".json"
+            self.intradayTradesDir, get_user_details(self.short_code).broker + "_" + get_user_details(self.short_code).clientID + ".json"
         )
         return tradesFilepath
 
-    def getStrategiesFilepath(self):
+    def get_strategies_filepath(self):
         tradesFilepath = os.path.join(
-            self.intradayTradesDir, getUserDetails(self.short_code).broker + "_" + getUserDetails(self.short_code).clientID + "_strategies.json"
+            self.intradayTradesDir, get_user_details(self.short_code).broker + "_" + get_user_details(self.short_code).clientID + "_strategies.json"
         )
         return tradesFilepath
 
-    def saveAllTradesToFile(self):
-        tradesFilepath = self.getTradesFilepath()
+    def save_trades_to_file(self):
+        tradesFilepath = self.get_trades_filepath()
         with open(tradesFilepath, "w") as tFile:
             json.dump(self.trades, tFile, indent=2, cls=TradeEncoder)
         logging.debug("TradeManager: Saved %d trades to file %s", len(self.trades), tradesFilepath)
 
-    def saveAllStrategiesToFile(self):
-        strategiesFilePath = self.getStrategiesFilepath()
+    def save_strategies_to_file(self):
+        strategiesFilePath = self.get_strategies_filepath()
         with open(strategiesFilePath, "w") as tFile:
-            json.dump(self.strategyToInstanceMap, tFile, indent=2, cls=TradeEncoder)
-        logging.debug("TradeManager: Saved %d strategies to file %s", len(self.strategyToInstanceMap.values()), strategiesFilePath)
+            json.dump(self.strategy_to_instance, tFile, indent=2, cls=TradeEncoder)
+        logging.debug("TradeManager: Saved %d strategies to file %s", len(self.strategy_to_instance.values()), strategiesFilePath)
 
-    def getAllTradesByStrategy(self, strategy: str):
+    def get_trades_by_strategy(self, strategy: str):
         tradesByStrategy = []
         for trade in self.trades:
             if trade.strategy == strategy:
                 tradesByStrategy.append(trade)
         return tradesByStrategy
 
-    def getQuestDBConnection(self):
+    def get_questdb_connection(self):
         try:
             connection = psycopg2.connect(user="admin", password="quest", host="127.0.0.1", port="8812", database="qdb")
             cursor = connection.cursor()
 
             cursor.execute(
-                """CREATE TABLE IF NOT EXISTS {0} ( ts TIMESTAMP, strategy string, tradingSymbol string, tradeId string, cmp float, entry float, pnl float, qty int, status string) timestamp(ts) partition by year""".format(
+                """CREATE TABLE IF NOT EXISTS {0} ( ts TIMESTAMP, strategy string, trading_symbol string, tradeId string, cmp float, entry float, pnl float, qty int, status string) timestamp(ts) partition by year""".format(
                     self.short_code
                 )
             )
             cursor.execute(
-                """CREATE TABLE IF NOT EXISTS {0}_tickData( ts TIMESTAMP, tradingSymbol string, ltp float, qty int, avgPrice float, volume int, totalBuyQuantity int, totalSellQuantity int, open float, high float, low float, close float, change float) timestamp(ts) partition by year""".format(
+                """CREATE TABLE IF NOT EXISTS {0}_tickData( ts TIMESTAMP, trading_symbol string, ltp float, qty int, avgPrice float, volume int, totalBuyQuantity int, totalSellQuantity int, open float, high float, low float, close float, change float) timestamp(ts) partition by year""".format(
                     self.short_code
                 )
             )
@@ -246,11 +247,11 @@ class TradeManager:
             logging.info("Can't connect to QuestDB")
             return None
 
-    def convertJSONToOrder(self, jsonData):
+    def convert_json_to_order(self, jsonData):
         if jsonData == None:
             return None
         order = Order()
-        order.tradingSymbol = jsonData["tradingSymbol"]
+        order.trading_symbol = jsonData["trading_symbol"]
         order.exchange = jsonData["exchange"]
         order.productType = jsonData["productType"]
         order.orderType = jsonData["orderType"]
@@ -268,13 +269,13 @@ class TradeManager:
         order.parentOrderId = jsonData.get("parent_order_id", "")
         return order
 
-    def convertJSONToTrade(self, jsonData):
-        trade = Trade(jsonData["tradingSymbol"])
+    def convert_json_to_trade(self, jsonData):
+        trade = Trade(jsonData["trading_symbol"])
         trade.tradeID = jsonData["tradeID"]
         trade.strategy = jsonData["strategy"]
         trade.direction = jsonData["direction"]
         trade.productType = jsonData["productType"]
-        trade.isFutures = jsonData["isFutures"]
+        trade.is_futures = jsonData["isFutures"]
         trade.isOptions = jsonData["isOptions"]
         trade.optionType = jsonData["optionType"]
         trade.underLying = jsonData.get("underLying", "")
@@ -284,7 +285,7 @@ class TradeManager:
         trade.entry = jsonData["entry"]
         trade.qty = jsonData["qty"]
         trade.filledQty = jsonData["filledQty"]
-        trade.initialStopLoss = jsonData["initialStopLoss"]
+        trade.initial_stoploss = jsonData["initialStopLoss"]
         trade.stopLoss = jsonData["_stopLoss"]
         trade.stopLossPercentage = jsonData.get("stopLossPercentage", 0)
         trade.stopLossUnderlyingPercentage = jsonData.get("stopLossUnderlyingPercentage", 0)
@@ -301,22 +302,22 @@ class TradeManager:
         trade.exitReason = jsonData["exitReason"]
         trade.exchange = jsonData["exchange"]
         for entryOrder in jsonData["entryOrder"]:
-            trade.entryOrder.append(self.convertJSONToOrder(entryOrder))
+            trade.entry_orders.append(self.convert_json_to_order(entryOrder))
         for slOrder in jsonData["slOrder"]:
-            trade.slOrder.append(self.convertJSONToOrder(slOrder))
+            trade.slOrder.append(self.convert_json_to_order(slOrder))
         for trargetOrder in jsonData["targetOrder"]:
-            trade.targetOrder.append(self.convertJSONToOrder(trargetOrder))
+            trade.targetOrder.append(self.convert_json_to_order(trargetOrder))
 
-    def tickerListener(self, tick):
-        # logging.info('tickerLister: new tick received for %s = %f', tick.tradingSymbol, tick.lastTradedPrice);
+    def ticker_listener(self, tick):
+        # logging.info('tickerLister: new tick received for %s = %f', tick.trading_symbol, tick.lastTradedPrice);
         # Store the latest tick in map
-        self.symbolToCMPMap[tick.tradingSymbol] = tick.lastTradedPrice
+        self.symbol_to_cmp[tick.trading_symbol] = tick.lastTradedPrice
         if tick.exchange_timestamp:
-            self.symbolToCMPMap["exchange_timestamp"] = tick.exchange_timestamp
+            self.symbol_to_cmp["exchange_timestamp"] = tick.exchange_timestamp
         # # On each new tick, get a created trade and call its strategy whether to place trade or not
         # for strategy in self.strategyToInstanceMap:
-        #     longTrade = self.getUntriggeredTrade(tick.tradingSymbol, strategy, Direction.LONG)
-        #     shortTrade = self.getUntriggeredTrade(tick.tradingSymbol, strategy, Direction.SHORT)
+        #     longTrade = self.getUntriggeredTrade(tick.trading_symbol, strategy, Direction.LONG)
+        #     shortTrade = self.getUntriggeredTrade(tick.trading_symbol, strategy, Direction.SHORT)
         #     if longTrade == None and shortTrade == None:
         #         continue
         #     strategyInstance = self.strategyToInstanceMap[strategy]

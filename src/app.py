@@ -12,18 +12,21 @@ flask_app = Flask(__name__)
 flask_app.config["SESSION_TYPE"] = "filesystem"
 Session(flask_app)
 flask_app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(minutes=180)
+flask_app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 # TODO override with proper config file
-serverConfig: Dict[str, str] = {}
-systemConfig: Dict[str, str] = {"homeUrl": "http://localhost:8080"}
+server_config: Dict[str, str] = {}
+system_config: Dict[str, str] = {"homeUrl": "http://localhost:8080"}
 
 
 @flask_app.route("/")
-def redirectHome():
+def redirect_home():
     return redirect("/me/" + session.get("short_code", "5207"))
 
 
-def initLoggingConfg(filepath: str) -> None:
+def init_logging(filepath: str) -> None:
     format = "%(asctime)s: %(message)s"
     handler = TimedRotatingFileHandler(filepath, when="midnight")
     logging.basicConfig(
@@ -43,18 +46,18 @@ def timectime(s: Union[str, float]) -> str:
 
 
 # Execution starts here
-deployDir = serverConfig.get("deployDir", "../.deploy/")
-if serverConfig.get("deployDir", None) == None:
-    serverConfig["deployDir"] = deployDir
+deploy_dir = server_config.get("deploy_dir", "../.deploy/")
+if server_config.get("deploy_dir", None) == None:
+    server_config["deploy_dir"] = deploy_dir
 
-if os.path.exists(deployDir) == False:
+if os.path.exists(deploy_dir) == False:
     try:
-        os.mkdir(deployDir)
+        os.mkdir(deploy_dir)
     except:
-        print("Deploy Directory " + deployDir + " can't be created. Exiting the app.")
+        print("Deploy Directory " + deploy_dir + " can't be created. Exiting the app.")
         exit(-1)
 
-logFileDir = serverConfig.get("logFileDir", deployDir + "logs/")
+logFileDir = server_config.get("logFileDir", deploy_dir + "logs/")
 if os.path.exists(logFileDir) == False:
     try:
         os.mkdir(logFileDir)
@@ -62,18 +65,15 @@ if os.path.exists(logFileDir) == False:
         print("LogFile Directory " + logFileDir + " does not exist. Exiting the app.")
         exit(-1)
 
-print("Deploy Directory = " + deployDir)
-initLoggingConfg(logFileDir + "/app.log")
+print("Deploy Directory = " + deploy_dir)
+init_logging(logFileDir + "/app.log")
 
-werkzeugLog = logging.getLogger("werkzeug")
-werkzeugLog.setLevel(logging.ERROR)
+werkzeug_log = logging.getLogger("werkzeug")
+werkzeug_log.setLevel(logging.ERROR)
 
-# brokerAppConfig = getBrokerAppConfig()
-# logging.info('brokerAppConfig => %s', brokerAppConfig)
-
-port = serverConfig.get("port", "8080")
+port = server_config.get("port", "8080")
 
 flask_app.jinja_env.filters["ctime"] = timectime
 
-flask_app.add_url_rule("/", "default_home", redirectHome)
+flask_app.add_url_rule("/", "default_home", redirect_home)
 from views import home

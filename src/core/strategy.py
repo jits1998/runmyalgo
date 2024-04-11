@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 from broker.base import BaseHandler
 from core import Quote
 from exceptions import DeRegisterStrategyException, DisableTradeException
-from instruments import getCMP, getInstrumentDataBySymbol, roundToNSEPrice
+from instruments import get_cmp, get_instrument_data_by_symbol, round_to_ticksize
 from models import (
     Direction,
     OrderStatus,
@@ -23,17 +23,17 @@ from models import (
 from models.order import Order, OrderModifyParams
 from models.trade import Trade
 from utils import (
-    calculateTradePnl,
-    findNumberOfDaysBeforeWeeklyExpiryDay,
-    getEpoch,
-    getMarketStartTime,
+    calculate_trade_pnl,
+    find_days_before_weekly_expiry,
+    get_epoch,
+    get_market_starttime,
+    get_time_today,
     getNearestStrikePrice,
-    getTimeOfToday,
-    isMarketClosedForTheDay,
-    isTodayWeeklyExpiryDay,
+    is_market_closed_for_the_day,
+    is_today_weekly_expiry,
+    prepare_weekly_options_symbol,
     prepareMonthlyExpiryFuturesSymbol,
-    prepareWeeklyOptionsSymbol,
-    waitTillMarketOpens,
+    wait_till_market_open,
 )
 
 
@@ -49,16 +49,16 @@ class BaseStrategy(ABC):
         self.enabled = True  # Strategy will be run only when it is enabled
         self.productType = ProductType.MIS  # MIS/NRML/CNC etc
         self.symbols: List[str] = []  # List of stocks to be traded under this strategy
-        self.slPercentage = 0
-        self.targetPercentage = 0
-        self.startTimestamp = getMarketStartTime()  # When to start the strategy. Default is Market start time
+        self.slPercentage = 0.0
+        self.targetPercentage = 0.0
+        self.startTimestamp = get_market_starttime()  # When to start the strategy. Default is Market start time
         # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
-        self.stopTimestamp = getTimeOfToday(0, 0, 0)
-        self.squareOffTimestamp = getTimeOfToday(0, 0, 0)  # Square off time
+        self.stopTimestamp = get_time_today(0, 0, 0)
+        self.squareOffTimestamp = get_time_today(0, 0, 0)  # Square off time
         self.maxTradesPerDay = 1  # Max number of trades per day under this strategy
         self.isFnO = True  # Does this strategy trade in FnO or not
-        self.strategySL: float = 0
-        self.strategyTarget = 0
+        self.strategySL = 0.0
+        self.strategyTarget = 0.0
         # Load all trades of this strategy into self.trades on restart of app
         self.trades: List[Trade] = []
         self.expiryDay = 2
@@ -83,16 +83,16 @@ class BaseStrategy(ABC):
     def getLots(self) -> int:
         lots = self._getLots(self.getName(), self.symbol, self.expiryDay) * self.getMultiple()
 
-        if isTodayWeeklyExpiryDay("NIFTY", expiryDay=3) and isTodayWeeklyExpiryDay("BANKNIFTY", expiryDay=2):
+        if is_today_weekly_expiry("NIFTY", expiryDay=3) and is_today_weekly_expiry("BANKNIFTY", expiryDay=2):
             lots = lots * 0.5
 
-        if isTodayWeeklyExpiryDay("FINNIFTY", expiryDay=1) and isTodayWeeklyExpiryDay("BANKNIFTY", expiryDay=2):
+        if is_today_weekly_expiry("FINNIFTY", expiryDay=1) and is_today_weekly_expiry("BANKNIFTY", expiryDay=2):
             lots = lots * 0.5
 
         if (
-            isTodayWeeklyExpiryDay("NIFTY", expiryDay=3)
-            and isTodayWeeklyExpiryDay("FINNIFTY", expiryDay=1)
-            and isTodayWeeklyExpiryDay("BANKNIFTY", expiryDay=2)
+            is_today_weekly_expiry("NIFTY", expiryDay=3)
+            and is_today_weekly_expiry("FINNIFTY", expiryDay=1)
+            and is_today_weekly_expiry("BANKNIFTY", expiryDay=2)
         ):
             lots = lots * 0.33
 
@@ -165,7 +165,7 @@ class BaseStrategy(ABC):
             self.strategySL = self.strategySL * self.getVIXAdjustment()
             self.strategyTarget = self.strategyTarget * self.getVIXAdjustment()
 
-            if isMarketClosedForTheDay():
+            if is_market_closed_for_the_day():
                 raise DeRegisterStrategyException("Market is closed, Can't run it")
 
         for trade in self.trades:
@@ -177,23 +177,23 @@ class BaseStrategy(ABC):
             raise DeRegisterStrategyException("Can't be traded today.")
 
         now = datetime.now()
-        if now < getMarketStartTime():
-            waitTillMarketOpens(self.getName())
+        if now < get_market_starttime():
+            wait_till_market_open(self.getName())
 
         now = datetime.now()
         if now < self.startTimestamp:
-            waitSeconds = getEpoch(self.startTimestamp) - getEpoch(now)
+            waitSeconds = get_epoch(self.startTimestamp) - get_epoch(now)
             logging.info("%s: Waiting for %d seconds till startegy start timestamp reaches...", self.getName(), waitSeconds)
             if waitSeconds > 0:
                 time.sleep(waitSeconds)
 
-        if self.getVIXThreshold() > getCMP(self.short_code, "INDIA VIX"):
+        if self.getVIXThreshold() > get_cmp(self.short_code, "INDIA VIX"):
             raise DeRegisterStrategyException("VIX threshold is not met. Can't run it!")
 
         # Run in an loop and keep processing
         while True:
 
-            if isMarketClosedForTheDay() or not self.isEnabled():
+            if is_market_closed_for_the_day() or not self.isEnabled():
                 logging.warn("%s: Exiting the strategy as market closed or strategy was disabled.", self.getName())
                 break
 
@@ -205,7 +205,7 @@ class BaseStrategy(ABC):
                 return
 
             # track each trade and take necessary action
-            self.trackAndUpdateAllTrades()
+            await self.trackAndUpdateAllTrades()
 
             # self.checkStrategyHealth()
 
@@ -217,24 +217,24 @@ class BaseStrategy(ABC):
             waitSeconds = 5 - (now.second % 5) + 3
             await asyncio.sleep(waitSeconds)
 
-    def trackAndUpdateAllTrades(self):
+    async def trackAndUpdateAllTrades(self):
 
         for trade in self.trades:
             if trade.tradeState == TradeState.ACTIVE:
                 self._trackEntryOrder(trade)
-                self._trackTargetOrder(trade)
-                self._trackSLOrder(trade)
+                await self._trackTargetOrder(trade)
+                await self._trackSLOrder(trade)
                 if trade.intradaySquareOffTimestamp != None:
-                    nowEpoch = getEpoch()
+                    nowEpoch = get_epoch()
                     if nowEpoch >= trade.intradaySquareOffTimestamp:
-                        trade.target = getCMP(self.short_code, trade.tradingSymbol)
+                        trade.target = get_cmp(self.short_code, trade.trading_symbol)
                         self.squareOffTrade(trade, TradeExitReason.SQUARE_OFF)
 
     def _trackEntryOrder(self, trade: Trade):
         if trade.tradeState != TradeState.ACTIVE:
             return
 
-        if len(trade.entryOrder) == 0:
+        if len(trade.entry_orders) == 0:
             return
 
         trade.filledQty = 0
@@ -242,7 +242,7 @@ class BaseStrategy(ABC):
         orderCanceled = 0
         orderRejected = 0
 
-        for entryOrder in trade.entryOrder:
+        for entryOrder in trade.entry_orders:
             if entryOrder.orderStatus == OrderStatus.CANCELLED:
                 orderCanceled += 1
 
@@ -254,42 +254,42 @@ class BaseStrategy(ABC):
             elif entryOrder.orderStatus not in [OrderStatus.REJECTED, OrderStatus.CANCELLED, None] and not entryOrder.orderType in [OrderType.SL_LIMIT]:
                 omp = OrderModifyParams()
                 if trade.direction == Direction.LONG:
-                    omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, entryOrder.price * 1.01) + 0.05
+                    omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, entryOrder.price * 1.01) + 0.05
                 else:
-                    omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, entryOrder.price * 0.99) - 0.05
+                    omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, entryOrder.price * 0.99) - 0.05
                 try:
                     self.modifyOrder(entryOrder, omp, trade.qty)
                 except Exception as e:
                     if e.args[0] == "Maximum allowed order modifications exceeded.":
                         self.cancelOrder(entryOrder)
             elif entryOrder.orderStatus in [OrderStatus.TRIGGER_PENDING]:
-                nowEpoch = getEpoch()
-                if nowEpoch >= getEpoch(self.stopTimestamp):
+                nowEpoch = get_epoch()
+                if nowEpoch >= get_epoch(self.stopTimestamp):
                     self.cancelOrder(entryOrder)
 
             trade.filledQty += entryOrder.filledQty
 
-        if orderCanceled == len(trade.entryOrder):
+        if orderCanceled == len(trade.entry_orders):
             trade.tradeState = TradeState.CANCELLED
 
-        if orderRejected == len(trade.entryOrder):
+        if orderRejected == len(trade.entry_orders):
             trade.tradeState = TradeState.DISABLED
 
         if orderRejected > 0:
             strategy = self
             for trade in strategy.trades:
                 if trade.tradeState in [TradeState.ACTIVE]:
-                    trade.target = getCMP(self.short_code, trade.tradingSymbol)
+                    trade.target = get_cmp(self.short_code, trade.trading_symbol)
                     self.squareOffTrade(trade, TradeExitReason.TRADE_FAILED)
                 strategy.setDisabled()
 
         # Update the current market price and calculate pnl
-        trade.cmp = getCMP(self.short_code, trade.tradingSymbol)
-        calculateTradePnl(trade)
+        trade.cmp = get_cmp(self.short_code, trade.trading_symbol)
+        calculate_trade_pnl(trade)
 
-    def _trackSLOrder(self, trade: Trade):
+    async def _trackSLOrder(self, trade: Trade):
         if trade.tradeState != TradeState.ACTIVE:
-            for entryOrder in trade.entryOrder:
+            for entryOrder in trade.entry_orders:
                 if entryOrder.orderStatus in [OrderStatus.OPEN, OrderStatus.TRIGGER_PENDING]:
                     return
         if trade.stopLoss == 0:
@@ -321,21 +321,21 @@ class BaseStrategy(ABC):
                     slRejected += 1
                 elif slOrder.orderStatus == OrderStatus.OPEN:
                     slOpen += 1
-                    newPrice = (slOrder.price + getCMP(self.short_code, trade.tradingSymbol)) * 0.5
+                    newPrice = (slOrder.price + get_cmp(self.short_code, trade.trading_symbol)) * 0.5
                     omp = OrderModifyParams()
                     if trade.direction == Direction.LONG:
-                        omp.newTriggerPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, newPrice) - 0.05
-                        omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, (newPrice * 0.99)) - 0.05
+                        omp.newTriggerPrice = round_to_ticksize(self.short_code, trade.trading_symbol, newPrice) - 0.05
+                        omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, (newPrice * 0.99)) - 0.05
                     else:
-                        omp.newTriggerPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, newPrice) + 0.05
-                        omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, newPrice * 1.01) + 0.05
+                        omp.newTriggerPrice = round_to_ticksize(self.short_code, trade.trading_symbol, newPrice) + 0.05
+                        omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, newPrice * 1.01) + 0.05
 
                     self.modifyOrder(slOrder, omp, trade.qty)
 
             if slCompleted == len(trade.slOrder) and len(trade.slOrder) > 0:
                 # SL Hit
                 exit = slAverage
-                exitReason = TradeExitReason.SL_HIT if trade.initialStopLoss == trade.stopLoss else TradeExitReason.TRAIL_SL_HIT
+                exitReason = TradeExitReason.SL_HIT if trade.initial_stoploss == trade.stopLoss else TradeExitReason.TRAIL_SL_HIT
                 self.setTradeToCompleted(trade, exit, exitReason)
                 # Make sure to cancel target order if exists
                 self.cancelOrders(trade.targetOrder)
@@ -352,13 +352,13 @@ class BaseStrategy(ABC):
                     logging.error(
                         "SL order tradeID %s cancelled outside of Algo. Setting the trade as completed with exit price as current market price.", trade.tradeID
                     )
-                    exit = getCMP(self.short_code, trade.tradingSymbol)
+                    exit = get_cmp(self.short_code, trade.trading_symbol)
                     self.setTradeToCompleted(trade, exit, TradeExitReason.SL_CANCELLED)
             elif slRejected > 0:
                 strategy = self
                 for trade in strategy.trades:
                     if trade.tradeState in [TradeState.ACTIVE]:
-                        trade.target = getCMP(self.short_code, trade.tradingSymbol)
+                        trade.target = get_cmp(self.short_code, trade.trading_symbol)
                         self.squareOffTrade(trade, TradeExitReason.TRADE_FAILED)
                     strategy.setDisabled()
             elif slOpen > 0:
@@ -369,7 +369,7 @@ class BaseStrategy(ABC):
     def checkAndUpdateTrailSL(self, trade: Trade):
         # Trail the SL if applicable for the trade
         strategyInstance = self
-        newTrailSL = roundToNSEPrice(self.short_code, trade.tradingSymbol, strategyInstance.getTrailingSL(trade))
+        newTrailSL = round_to_ticksize(self.short_code, trade.trading_symbol, strategyInstance.getTrailingSL(trade))
         updateSL = False
         if newTrailSL > 0:
             if trade.direction == Direction.LONG and newTrailSL > trade.stopLoss:
@@ -387,7 +387,9 @@ class BaseStrategy(ABC):
         if updateSL == True:
             omp = OrderModifyParams()
             omp.newTriggerPrice = newTrailSL
-            omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, omp.newTriggerPrice * (0.99 if trade.direction == Direction.LONG else 1.01))
+            omp.newPrice = round_to_ticksize(
+                self.short_code, trade.trading_symbol, omp.newTriggerPrice * (0.99 if trade.direction == Direction.LONG else 1.01)
+            )
             # sl order direction is reverse
             try:
                 oldSL = trade.stopLoss
@@ -399,7 +401,7 @@ class BaseStrategy(ABC):
             except Exception as e:
                 logging.error("TradeManager: Failed to modify SL order for tradeID %s : Error => %s", trade.tradeID, str(e))
 
-    def _trackTargetOrder(self, trade: Trade):
+    async def _trackTargetOrder(self, trade: Trade):
         if trade.tradeState != TradeState.ACTIVE and self.isTargetORSLHit() is not None:
             return
         if trade.target == 0:  # Do not place Target order if no target provided
@@ -426,11 +428,11 @@ class BaseStrategy(ABC):
                     targetOpen += 1
                     omp = OrderModifyParams()
                     if trade.direction == Direction.LONG:
-                        omp.newTriggerPrice = roundToNSEPrice(targetOrder.price * 0.99) - 0.05
-                        omp.newPrice = roundToNSEPrice(omp.newTriggerPrice * 0.99) - 0.05
+                        omp.newTriggerPrice = round_to_ticksize(targetOrder.price * 0.99) - 0.05
+                        omp.newPrice = round_to_ticksize(omp.newTriggerPrice * 0.99) - 0.05
                     else:
-                        omp.newTriggerPrice = roundToNSEPrice(targetOrder.price * 1.01) + 0.05
-                        omp.newPrice = roundToNSEPrice(omp.newTriggerPrice * 1.01) + 0.05
+                        omp.newTriggerPrice = round_to_ticksize(targetOrder.price * 1.01) + 0.05
+                        omp.newPrice = round_to_ticksize(omp.newTriggerPrice * 1.01) + 0.05
 
                     self.modifyOrder(targetOrder, omp, trade.qty)
 
@@ -447,7 +449,7 @@ class BaseStrategy(ABC):
                     "Target orderfor tradeID %s cancelled outside of Algo. Setting the trade as completed with exit price as current market price.",
                     trade.tradeID,
                 )
-                exit = getCMP(self.short_code, trade.tradingSymbol)
+                exit = get_cmp(self.short_code, trade.trading_symbol)
                 self.setTradeToCompleted(trade, exit, TradeExitReason.TARGET_CANCELLED)
                 # Cancel SL order
                 self.cancelOrders(trade.slOrder)
@@ -483,9 +485,9 @@ class BaseStrategy(ABC):
         #     trade.endTimestamp = datetime.strptime(
         #         trade.slOrder.lastOrderUpdateTimestamp, "%Y-%m-%d %H:%M:%S").timestamp()
         # else:
-        trade.endTimestamp = getEpoch()
+        trade.endTimestamp = get_epoch()
 
-        trade = calculateTradePnl(trade)
+        trade = calculate_trade_pnl(trade)
 
     def squareOffTrade(self, trade: Trade, reason=TradeExitReason.SQUARE_OFF):
         logging.info("TradeManager: squareOffTrade called for tradeID %s with reason %s", trade.tradeID, reason)
@@ -493,11 +495,11 @@ class BaseStrategy(ABC):
             return
 
         trade.exitReason = reason
-        if len(trade.entryOrder) > 0:
-            for entryOrder in trade.entryOrder:
+        if len(trade.entry_orders) > 0:
+            for entryOrder in trade.entry_orders:
                 if entryOrder.orderStatus in [OrderStatus.OPEN, OrderStatus.TRIGGER_PENDING]:
                     # Cancel entry order if it is still open (not filled or partially filled case)
-                    self.cancelOrders(trade.entryOrder)
+                    self.cancelOrders(trade.entry_orders)
                     break
 
         if len(trade.slOrder) > 0:
@@ -516,7 +518,7 @@ class BaseStrategy(ABC):
             for targetOrder in trade.targetOrder:
                 if targetOrder.orderStatus == OrderStatus.OPEN:
                     omp = OrderModifyParams()
-                    omp.newPrice = roundToNSEPrice(self.short_code, trade.tradingSymbol, trade.cmp * (0.99 if trade.direction == Direction.LONG else 1.01))
+                    omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, trade.cmp * (0.99 if trade.direction == Direction.LONG else 1.01))
                     self.modifyOrder(targetOrder, omp, trade.filledQty)
         elif trade.entry > 0:
             # Place new target order to exit position, adjust target to current market price
@@ -544,20 +546,20 @@ class BaseStrategy(ABC):
         if trade != None:
             self.trades.append(trade)
 
-    def getQuote(self, tradingSymbol):
+    def get_quote(self, trading_symbol):
         try:
-            return self.handler.getQuote(tradingSymbol, self.short_code, self.isFnO, self.exchange)
+            return self.handler.get_quote(trading_symbol, self.short_code, self.isFnO, self.exchange)
         except KeyError as e:
-            logging.info("%s::%s: Could not get Quote for %s => %s", self.short_code, self.getName(), tradingSymbol, str(e))
+            logging.info("%s::%s: Could not get Quote for %s => %s", self.short_code, self.getName(), trading_symbol, str(e))
         except Exception as exp:
-            logging.info("%s::%s: Could not get Quote for %s => %s", self.short_code, self.getName(), tradingSymbol, str(exp))
+            logging.info("%s::%s: Could not get Quote for %s => %s", self.short_code, self.getName(), trading_symbol, str(exp))
 
-        return Quote(tradingSymbol)
+        return Quote(trading_symbol)
 
     def getTrailingSL(self, trade):
         return 0
 
-    async def generateTrade(self, optionSymbol, direction, numLots, lastTradedPrice, slPercentage=0, slPrice=0, targetPrice=0, placeMarketOrder=True):
+    async def generateTrade(self, optionSymbol, direction, numLots, lastTradedPrice, slPercentage=0.0, slPrice=0.0, targetPrice=0.0, placeMarketOrder=True):
         trade = Trade(optionSymbol, self.getName())
         trade.isOptions = True
         trade.exchange = self.exchange
@@ -565,16 +567,16 @@ class BaseStrategy(ABC):
         trade.productType = self.productType
         trade.placeMarketOrder = placeMarketOrder
         trade.requestedEntry = lastTradedPrice
-        trade.timestamp = getEpoch(self.startTimestamp)  # setting this to strategy timestamp
+        trade.timestamp = get_epoch(self.startTimestamp)  # setting this to strategy timestamp
 
         trade.stopLossPercentage = slPercentage
         trade.stopLoss = slPrice  # if set to 0, then set stop loss will be set after entry via trailingSL method
         trade.target = targetPrice
 
-        isd = getInstrumentDataBySymbol(self.short_code, optionSymbol)  # Get instrument data to know qty per lot
+        isd = get_instrument_data_by_symbol(self.short_code, optionSymbol)  # Get instrument data to know qty per lot
         trade.qty = isd["lot_size"] * numLots
 
-        trade.intradaySquareOffTimestamp = getEpoch(self.squareOffTimestamp)
+        trade.intradaySquareOffTimestamp = get_epoch(self.squareOffTimestamp)
         # Hand over the trade to TradeManager
         await self.orderQueue.put(trade)
 
@@ -588,25 +590,25 @@ class BaseStrategy(ABC):
         trade.productType = self.productType
         trade.placeMarketOrder = placeMarketOrder
         trade.requestedEntry = lastTradedPrice
-        trade.timestamp = getEpoch(self.startTimestamp)  # setting this to strategy timestamp
+        trade.timestamp = get_epoch(self.startTimestamp)  # setting this to strategy timestamp
 
         trade.underLying = underLying
         trade.stopLossUnderlyingPercentage = underLyingStopLossPercentage
 
-        isd = getInstrumentDataBySymbol(self.short_code, optionSymbol)  # Get instrument data to know qty per lot
+        isd = get_instrument_data_by_symbol(self.short_code, optionSymbol)  # Get instrument data to know qty per lot
         trade.qty = isd["lot_size"] * numLots
 
         trade.stopLoss = 0
         trade.target = 0  # setting to 0 as no target is applicable for this trade
 
-        trade.intradaySquareOffTimestamp = getEpoch(self.squareOffTimestamp)
+        trade.intradaySquareOffTimestamp = get_epoch(self.squareOffTimestamp)
         # Hand over the trade to TradeManager
         await self.orderQueue.put(trade)
 
     def getStrikeWithNearestPremium(self, optionType, nearestPremium, roundToNearestStrike=100):
         # Get the nearest premium strike price
         futureSymbol = prepareMonthlyExpiryFuturesSymbol(self.symbol, self.expiryDay)
-        quote = self.getQuote(futureSymbol)
+        quote = self.get_quote(futureSymbol)
         if quote == None or quote.lastTradedPrice == 0:
             logging.error("%s: Could not get quote for %s", self.getName(), futureSymbol)
             return
@@ -618,7 +620,7 @@ class BaseStrategy(ABC):
         lastStrike = strikePrice
 
         while premium < nearestPremium:  # check if we need to go ITM
-            premium = self.getQuote(prepareWeeklyOptionsSymbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).lastTradedPrice
+            premium = self.get_quote(prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).lastTradedPrice
             if optionType == "CE":
                 strikePrice = strikePrice - roundToNearestStrike
             else:
@@ -626,18 +628,18 @@ class BaseStrategy(ABC):
 
         while True:
             try:
-                symbol = prepareWeeklyOptionsSymbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)
+                symbol = prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)
                 try:
-                    getInstrumentDataBySymbol(self.short_code, symbol)
+                    get_instrument_data_by_symbol(self.short_code, symbol)
                 except KeyError:
                     logging.info("%s: Could not get instrument for %s", self.getName(), symbol)
                     return lastStrike, lastPremium
 
-                quote = self.getQuote(symbol)
+                quote = self.get_quote(symbol)
 
                 if quote.totalSellQuantity == 0 and quote.totalBuyQuantity == 0:
                     time.sleep(1)
-                    quote = self.getQuote(symbol)  # lets try one more time.
+                    quote = self.get_quote(symbol)  # lets try one more time.
 
                 premium = quote.lastTradedPrice
 
@@ -677,7 +679,7 @@ class BaseStrategy(ABC):
     def getStrikeWithMinimumPremium(self, optionType, minimumPremium, roundToNearestStrike=100):
         # Get the nearest premium strike price
         futureSymbol = prepareMonthlyExpiryFuturesSymbol(self.symbol, self.expiryDay)
-        quote = self.getQuote(futureSymbol)
+        quote = self.get_quote(futureSymbol)
         if quote == None or quote.lastTradedPrice == 0:
             logging.error("%s: Could not get quote for %s", self.getName(), futureSymbol)
             return
@@ -689,7 +691,7 @@ class BaseStrategy(ABC):
         lastStrike = strikePrice
 
         while premium < minimumPremium:  # check if we need to go ITM
-            premium = self.getQuote(prepareWeeklyOptionsSymbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).lastTradedPrice
+            premium = self.get_quote(prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).lastTradedPrice
             if optionType == "CE":
                 strikePrice = strikePrice - roundToNearestStrike
             else:
@@ -697,13 +699,13 @@ class BaseStrategy(ABC):
 
         while True:
             try:
-                symbol = prepareWeeklyOptionsSymbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)
-                getInstrumentDataBySymbol(self.short_code, symbol)
-                quote = self.getQuote(symbol)
+                symbol = prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)
+                get_instrument_data_by_symbol(self.short_code, symbol)
+                quote = self.get_quote(symbol)
 
                 if quote.totalSellQuantity == 0 and quote.totalBuyQuantity == 0:
                     time.sleep(1)
-                    quote = self.getQuote(symbol)  # lets try one more time.
+                    quote = self.get_quote(symbol)  # lets try one more time.
 
                 premium = quote.lastTradedPrice
 
@@ -724,7 +726,7 @@ class BaseStrategy(ABC):
     def getStrikeWithMaximumPremium(self, optionType, maximumPremium, roundToNearestStrike=100):
         # Get the nearest premium strike price
         futureSymbol = prepareMonthlyExpiryFuturesSymbol(self.symbol, self.expiryDay)
-        quote = self.getQuote(futureSymbol)
+        quote = self.get_quote(futureSymbol)
         if quote == None or quote.lastTradedPrice == 0:
             logging.error("%s: Could not get quote for %s", self.getName(), futureSymbol)
             return
@@ -736,7 +738,7 @@ class BaseStrategy(ABC):
         lastStrike = strikePrice
 
         while premium < maximumPremium:  # check if we need to go ITM
-            premium = self.getQuote(prepareWeeklyOptionsSymbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).lastTradedPrice
+            premium = self.get_quote(prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).lastTradedPrice
             if optionType == "CE":
                 strikePrice = strikePrice - roundToNearestStrike
             else:
@@ -744,13 +746,13 @@ class BaseStrategy(ABC):
 
         while True:
             try:
-                symbol = prepareWeeklyOptionsSymbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)
-                getInstrumentDataBySymbol(self.short_code, symbol)
-                quote = self.getQuote(symbol)
+                symbol = prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)
+                get_instrument_data_by_symbol(self.short_code, symbol)
+                quote = self.get_quote(symbol)
 
                 if quote.totalSellQuantity == 0 and quote.totalBuyQuantity == 0:
                     time.sleep(1)
-                    quote = self.getQuote(symbol)  # lets try one more time.
+                    quote = self.get_quote(symbol)  # lets try one more time.
 
                 premium = quote.lastTradedPrice
 
@@ -769,7 +771,7 @@ class BaseStrategy(ABC):
                 return lastStrike, lastPremium
 
     def getVIXAdjustment(self):
-        return math.pow(getCMP(self.short_code, "INDIA VIX") / 16, 0.5)
+        return math.pow(get_cmp(self.short_code, "INDIA VIX") / 16, 0.5)
 
     def asDict(self):
         dict = {}
@@ -786,9 +788,9 @@ class BaseStrategy(ABC):
 
     def _getLots(self, strategyName, symbol, expiryDay):
         strategyLots = self.runConfig
-        if isTodayWeeklyExpiryDay(symbol, expiryDay):
+        if is_today_weekly_expiry(symbol, expiryDay):
             return strategyLots[0]
-        noOfDaysBeforeExpiry = findNumberOfDaysBeforeWeeklyExpiryDay(symbol, expiryDay)
+        noOfDaysBeforeExpiry = find_days_before_weekly_expiry(symbol, expiryDay)
         if strategyLots[-noOfDaysBeforeExpiry] > 0:
             return strategyLots[-noOfDaysBeforeExpiry]
         dayOfWeek = datetime.datetime.now().weekday() + 1  # adding + 1 to set monday index as 1
@@ -849,11 +851,11 @@ class ManualStrategy(BaseStrategy):
         super().__init__("ManualStrategy", short_code, handler, multiple)  # type: ignore
 
         # When to start the strategy. Default is Market start time
-        self.startTimestamp = getTimeOfToday(9, 16, 0)
+        self.startTimestamp = get_time_today(9, 16, 0)
         self.productType = ProductType.MIS
         # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
-        self.stopTimestamp = getTimeOfToday(15, 24, 0)
-        self.squareOffTimestamp = getTimeOfToday(15, 24, 0)  # Square off time
+        self.stopTimestamp = get_time_today(15, 24, 0)
+        self.squareOffTimestamp = get_time_today(15, 24, 0)  # Square off time
         self.maxTradesPerDay = 10
 
     async def process(self):
@@ -883,11 +885,11 @@ class TestStrategy(BaseStrategy):
         self.symbols = []
         self.slPercentage = 0
         self.targetPercentage = 0
-        self.startTimestamp = getTimeOfToday(9, 25, 0)  # When to start the strategy. Default is Market start time
-        self.stopTimestamp = getTimeOfToday(
+        self.startTimestamp = get_time_today(9, 25, 0)  # When to start the strategy. Default is Market start time
+        self.stopTimestamp = get_time_today(
             15, 15, 0
         )  # This is not square off timestamp. This is the timestamp after which no new trades will be placed under this strategy but existing trades continue to be active.
-        self.squareOffTimestamp = getTimeOfToday(15, 15, 0)  # Square off time
+        self.squareOffTimestamp = get_time_today(15, 15, 0)  # Square off time
         self.maxTradesPerDay = 2  # (1 CE + 1 PE) Max number of trades per day under this strategy
         self.ceTrades = []
         self.peTrades = []
@@ -897,7 +899,7 @@ class TestStrategy(BaseStrategy):
         self.expiryDay = 3
 
         for trade in self.trades:
-            if trade.tradingSymbol.endswith("CE"):
+            if trade.trading_symbol.endswith("CE"):
                 self.ceTrades.append(trade)
             else:
                 self.peTrades.append(trade)
@@ -915,26 +917,26 @@ class TestStrategy(BaseStrategy):
             return
         indexSymbol = "NIFTY 50"
         # Get current market price of Nifty Future
-        quote = self.handler.getIndexQuote(indexSymbol, self.short_code)
+        quote = self.handler.get_index_quote(indexSymbol, self.short_code)
         if quote == None:
             logging.error("%s: Could not get quote for %s", self.getName(), indexSymbol)
             return
 
         ATMStrike = getNearestStrikePrice(quote.lastTradedPrice, 50)
 
-        ATMCESymbol = prepareWeeklyOptionsSymbol(self.symbol, ATMStrike, "CE", expiryDay=self.expiryDay)
-        ATMCEQuote = self.getQuote(ATMCESymbol).lastTradedPrice
+        ATMCESymbol = prepare_weekly_options_symbol(self.symbol, ATMStrike, "CE", expiryDay=self.expiryDay)
+        ATMCEQuote = self.get_quote(ATMCESymbol).lastTradedPrice
 
-        ATMPESymbol = prepareWeeklyOptionsSymbol(self.symbol, ATMStrike, "PE", expiryDay=self.expiryDay)
-        ATMPEQuote = self.getQuote(ATMPESymbol).lastTradedPrice
+        ATMPESymbol = prepare_weekly_options_symbol(self.symbol, ATMStrike, "PE", expiryDay=self.expiryDay)
+        ATMPEQuote = self.get_quote(ATMPESymbol).lastTradedPrice
 
         OTMPEStrike = getNearestStrikePrice(quote.lastTradedPrice - 500, 50)
-        OTMPESymbol = prepareWeeklyOptionsSymbol(self.symbol, OTMPEStrike, "PE", expiryDay=self.expiryDay)
-        OTMPEQuote = self.getQuote(OTMPESymbol).lastTradedPrice
+        OTMPESymbol = prepare_weekly_options_symbol(self.symbol, OTMPEStrike, "PE", expiryDay=self.expiryDay)
+        OTMPEQuote = self.get_quote(OTMPESymbol).lastTradedPrice
 
         OTMCEStrike = getNearestStrikePrice(quote.lastTradedPrice + 500, 50)
-        OTMCESymbol = prepareWeeklyOptionsSymbol(self.symbol, OTMCEStrike, "CE", expiryDay=self.expiryDay)
-        OTMCEQuote = self.getQuote(OTMCESymbol).lastTradedPrice
+        OTMCESymbol = prepare_weekly_options_symbol(self.symbol, OTMCEStrike, "CE", expiryDay=self.expiryDay)
+        OTMCEQuote = self.get_quote(OTMCESymbol).lastTradedPrice
 
         # self.generateTrade(OTMPESymbol, Direction.SHORT, self.getLots(), OTMPEQuote * 1.2, 5)
         await self.generateTrade(OTMCESymbol, Direction.SHORT, self.getLots(), OTMCEQuote * 1.2, 5)
@@ -942,9 +944,9 @@ class TestStrategy(BaseStrategy):
     def shouldPlaceTrade(self, trade: Trade):
         if not super().shouldPlaceTrade(trade):
             return False
-        if (trade.tradingSymbol.endswith("CE")) and len(self.ceTrades) < 2:
+        if (trade.trading_symbol.endswith("CE")) and len(self.ceTrades) < 2:
             return True
-        if (trade.tradingSymbol.endswith("PE")) and len(self.peTrades) < 2:
+        if (trade.trading_symbol.endswith("PE")) and len(self.peTrades) < 2:
             return True
 
         return False
@@ -952,7 +954,7 @@ class TestStrategy(BaseStrategy):
     def addTradeToList(self, trade: Trade):
         if trade != None:
             self.trades.append(trade)
-            if trade.tradingSymbol.endswith("CE"):
+            if trade.trading_symbol.endswith("CE"):
                 self.ceTrades.append(trade)
             else:
                 self.peTrades.append(trade)
@@ -960,8 +962,10 @@ class TestStrategy(BaseStrategy):
     def getTrailingSL(self, trade: Trade):
 
         if trade.stopLoss == 0 and trade.entry > 0:
-            trade.initialStopLoss = roundToNSEPrice(self.short_code, trade.tradingSymbol, trade.entry + (+1 if trade.direction == Direction.SHORT else -1) * 1)
-            return trade.initialStopLoss
+            trade.initial_stoploss = round_to_ticksize(
+                self.short_code, trade.trading_symbol, trade.entry + (+1 if trade.direction == Direction.SHORT else -1) * 1
+            )
+            return trade.initial_stoploss
 
         trailSL = 0
         return trailSL

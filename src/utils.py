@@ -1,10 +1,11 @@
+import asyncio
 import calendar
 import functools
 import logging
 import time
 from datetime import datetime, timedelta
 
-from config import getHolidays, getUserConfig
+from config import get_holidays, get_user_config
 from models import Direction, TradeState, UserDetails
 from models.trade import Trade
 
@@ -14,46 +15,46 @@ dateTimeFormat = "%Y-%m-%d %H:%M:%S"
 
 
 @functools.lru_cache
-def getUserDetails(short_code: str) -> UserDetails:
-    userConfig: dict = getUserConfig(short_code)
+def get_user_details(short_code: str) -> UserDetails:
+    userConfig: dict = get_user_config(short_code)
 
-    userDetails = UserDetails()
-    userDetails.short_code = short_code
-    userDetails.broker = userConfig["broker"]
-    userDetails.clientID = userConfig["clientID"]
-    userDetails.secret = userConfig["appSecret"]
-    userDetails.key = userConfig["appKey"]
-    userDetails.multiple = int(userConfig["multiple"])
-    userDetails.algoType = userConfig["algoType"]
+    user_details = UserDetails()
+    user_details.short_code = short_code
+    user_details.broker = userConfig["broker"]
+    user_details.clientID = userConfig["clientID"]
+    user_details.secret = userConfig["appSecret"]
+    user_details.key = userConfig["appKey"]
+    user_details.multiple = int(userConfig["multiple"])
+    user_details.algoType = userConfig["algoType"]
 
-    return userDetails
+    return user_details
 
 
-def roundOff(price: float):  # Round off to 2 decimal places
+def roundoff(price: float):  # Round off to 2 decimal places
     return round(price, 2)
 
 
-def calculateTradePnl(trade: Trade):
+def calculate_trade_pnl(trade: Trade):
     if trade.tradeState == TradeState.ACTIVE:
         if trade.cmp > 0:
             if trade.direction == Direction.LONG:
-                trade.pnl = roundOff(trade.filledQty * (trade.cmp - trade.entry))
+                trade.pnl = roundoff(trade.filledQty * (trade.cmp - trade.entry))
             else:
-                trade.pnl = roundOff(trade.filledQty * (trade.entry - trade.cmp))
+                trade.pnl = roundoff(trade.filledQty * (trade.entry - trade.cmp))
     else:
         if trade.exit > 0:
             if trade.direction == Direction.LONG:
-                trade.pnl = roundOff(trade.filledQty * (trade.exit - trade.entry))
+                trade.pnl = roundoff(trade.filledQty * (trade.exit - trade.entry))
             else:
-                trade.pnl = roundOff(trade.filledQty * (trade.entry - trade.exit))
+                trade.pnl = roundoff(trade.filledQty * (trade.entry - trade.exit))
     tradeValue = trade.entry * trade.filledQty
     if tradeValue > 0:
-        trade.pnlPercentage = roundOff(trade.pnl * 100 / tradeValue)
+        trade.pnlPercentage = roundoff(trade.pnl * 100 / tradeValue)
 
     return trade
 
 
-def getEpoch(datetimeObj=None):
+def get_epoch(datetimeObj=None):
     # This method converts given datetimeObj to epoch seconds
     if datetimeObj == None:
         datetimeObj = datetime.now()
@@ -61,52 +62,61 @@ def getEpoch(datetimeObj=None):
     return int(epochSeconds)  # converting double to long
 
 
-def getTodayDateStr() -> str:
+def get_today_date_str() -> str:
     return datetime.now().strftime(DateFormat)
 
 
-def waitTillMarketOpens(context) -> None:
-    nowEpoch = getEpoch(datetime.now())
-    marketStartTimeEpoch = getEpoch(getMarketStartTime())
+def wait_till_market_open(context) -> None:
+    nowEpoch = get_epoch(datetime.now())
+    marketStartTimeEpoch = get_epoch(get_market_starttime())
     waitSeconds = marketStartTimeEpoch - nowEpoch
     if waitSeconds > 0:
         logging.info("%s: Waiting for %d seconds till market opens...", context, waitSeconds)
         time.sleep(waitSeconds)
 
 
-def getMarketStartTime(dateTimeObj=None):
-    return getTimeOfDay(9, 15, 0, dateTimeObj)
+async def wait_till_market_open_async(context) -> None:
+    nowEpoch = get_epoch(datetime.now())
+    marketStartTimeEpoch = get_epoch(get_market_starttime())
+    waitSeconds = marketStartTimeEpoch - nowEpoch
+    if waitSeconds > 0:
+        logging.info("%s: Waiting for %d seconds till market opens...", context, waitSeconds)
+        await asyncio.sleep(waitSeconds)
 
 
-def getMarketEndTime(dateTimeObj=None):
-    return getTimeOfDay(15, 30, 0, dateTimeObj)
+def get_market_starttime(dateTimeObj=None):
+    return get_time(9, 15, 0, dateTimeObj)
 
 
-def getTimeOfDay(hours, minutes, seconds, dateTimeObj=None):
+def get_market_endtime(dateTimeObj=None):
+    return get_time(15, 30, 0, dateTimeObj)
+
+
+def get_time(hours, minutes, seconds, dateTimeObj=None):
     if dateTimeObj == None:
         dateTimeObj = datetime.now()
     dateTimeObj = dateTimeObj.replace(hour=hours, minute=minutes, second=seconds, microsecond=0)
     return dateTimeObj
 
 
-def prepareWeeklyOptionsSymbol(inputSymbol, strike, optionType, numWeeksPlus=0, expiryDay=2):
-    expiryDateTime = getWeeklyExpiryDayDate(inputSymbol, expiryDay=expiryDay)
+def prepare_weekly_options_symbol(inputSymbol, strike, optionType, numWeeksPlus=0, expiryDay=2):
+    expiryDateTime = get_weekly_expiry_day(inputSymbol, expiryDay=expiryDay)
     # Check if monthly and weekly expiry same
-    expiryDateTimeMonthly = getMonthlyExpiryDayDate(expiryDay=expiryDay)
+    expiryDateTimeMonthly = get_monthly_expiry_day(expiryDay=expiryDay)
     weekAndMonthExpriySame = False
-    if expiryDateTime == expiryDateTimeMonthly or expiryDateTimeMonthly == getTimeOfDay(0, 0, 0, datetime.now()):
+    if expiryDateTime == expiryDateTimeMonthly or expiryDateTimeMonthly == get_time(0, 0, 0, datetime.now()):
         expiryDateTime = expiryDateTimeMonthly
         weekAndMonthExpriySame = True
         logging.debug("Weekly and Monthly expiry is same for %s", expiryDateTime)
 
-    todayMarketStartTime = getMarketStartTime()
-    expiryDayMarketEndTime = getMarketEndTime(expiryDateTime)
+    todayMarketStartTime = get_market_starttime()
+    expiryDayMarketEndTime = get_market_endtime(expiryDateTime)
     if numWeeksPlus > 0:
         expiryDateTime = expiryDateTime + timedelta(days=numWeeksPlus * 7)
-        expiryDateTime = getWeeklyExpiryDayDate(inputSymbol, expiryDateTime, expiryDay)
+        expiryDateTime = get_weekly_expiry_day(inputSymbol, expiryDateTime, expiryDay)
     if todayMarketStartTime > expiryDayMarketEndTime:
         expiryDateTime = expiryDateTime + timedelta(days=6)
-        expiryDateTime = getWeeklyExpiryDayDate(inputSymbol, expiryDateTime, expiryDay)
+        expiryDateTime = get_weekly_expiry_day(inputSymbol, expiryDateTime, expiryDay)
 
     year2Digits = str(expiryDateTime.year)[2:]
     optionSymbol = None
@@ -129,14 +139,14 @@ def prepareWeeklyOptionsSymbol(inputSymbol, strike, optionType, numWeeksPlus=0, 
     return optionSymbol
 
 
-def getWeeklyExpiryDayDate(inputSymbol, dateTimeObj=None, expiryDay=2):
+def get_weekly_expiry_day(inputSymbol, dateTimeObj=None, expiryDay=2):
 
-    expiryDateTimeMonthly = getMonthlyExpiryDayDate(expiryDay=expiryDay)
+    expiryDateTimeMonthly = get_monthly_expiry_day(expiryDay=expiryDay)
 
     if dateTimeObj == None:
         dateTimeObj = datetime.now()
 
-    if expiryDateTimeMonthly == getTimeOfDay(0, 0, 0, dateTimeObj):
+    if expiryDateTimeMonthly == get_time(0, 0, 0, dateTimeObj):
         datetimeExpiryDay = expiryDateTimeMonthly
     else:
 
@@ -146,15 +156,15 @@ def getWeeklyExpiryDayDate(inputSymbol, dateTimeObj=None, expiryDay=2):
         else:
             daysToAdd = expiryDay - dateTimeObj.weekday()
         datetimeExpiryDay = dateTimeObj + timedelta(days=daysToAdd)
-        while isHoliday(datetimeExpiryDay) == True:
+        while is_holiday(datetimeExpiryDay) == True:
             datetimeExpiryDay = datetimeExpiryDay - timedelta(days=1)
 
-        datetimeExpiryDay = getTimeOfDay(0, 0, 0, datetimeExpiryDay)
+        datetimeExpiryDay = get_time(0, 0, 0, datetimeExpiryDay)
 
     return datetimeExpiryDay
 
 
-def getMonthlyExpiryDayDate(datetimeObj=None, expiryDay=3):
+def get_monthly_expiry_day(datetimeObj=None, expiryDay=3):
     if datetimeObj == None:
         datetimeObj = datetime.now()
     year = datetimeObj.year
@@ -163,33 +173,33 @@ def getMonthlyExpiryDayDate(datetimeObj=None, expiryDay=3):
     datetimeExpiryDay = datetime(year, month, lastDay)
     while datetimeExpiryDay.weekday() != expiryDay:
         datetimeExpiryDay = datetimeExpiryDay - timedelta(days=1)
-    while isHoliday(datetimeExpiryDay) == True:
+    while is_holiday(datetimeExpiryDay) == True:
         datetimeExpiryDay = datetimeExpiryDay - timedelta(days=1)
 
-    datetimeExpiryDay = getTimeOfDay(0, 0, 0, datetimeExpiryDay)
+    datetimeExpiryDay = get_time(0, 0, 0, datetimeExpiryDay)
     return datetimeExpiryDay
 
 
-def isTodayWeeklyExpiryDay(inputSymbol, expiryDay=2):
-    expiryDate = getWeeklyExpiryDayDate(inputSymbol, expiryDay=expiryDay)
-    todayDate = getTimeOfToday(0, 0, 0)
+def is_today_weekly_expiry(inputSymbol, expiryDay=2):
+    expiryDate = get_weekly_expiry_day(inputSymbol, expiryDay=expiryDay)
+    todayDate = get_time_today(0, 0, 0)
     if expiryDate == todayDate:
         return True
     return False
 
 
-def findNumberOfDaysBeforeWeeklyExpiryDay(inputSymbol, expiryDay=2):
+def find_days_before_weekly_expiry(inputSymbol, expiryDay=2):
 
-    if isTodayWeeklyExpiryDay(inputSymbol, expiryDay=expiryDay):
+    if is_today_weekly_expiry(inputSymbol, expiryDay=expiryDay):
         return 0
 
-    expiryDate = getWeeklyExpiryDayDate(inputSymbol, expiryDay=expiryDay)
-    dateTimeObj = getTimeOfToday(0, 0, 0)
+    expiryDate = get_weekly_expiry_day(inputSymbol, expiryDay=expiryDay)
+    dateTimeObj = get_time_today(0, 0, 0)
     currentWeekTradingDates = []
 
     while dateTimeObj < expiryDate:
 
-        if isHoliday(dateTimeObj):
+        if is_holiday(dateTimeObj):
             dateTimeObj += timedelta(days=1)
             continue
 
@@ -198,44 +208,44 @@ def findNumberOfDaysBeforeWeeklyExpiryDay(inputSymbol, expiryDay=2):
     return len(currentWeekTradingDates)
 
 
-def getTimeOfToday(hours, minutes, seconds):
-    return getTimeOfDay(hours, minutes, seconds, datetime.now())
+def get_time_today(hours, minutes, seconds):
+    return get_time(hours, minutes, seconds, datetime.now())
 
 
-def isHoliday(datetimeObj):
+def is_holiday(datetimeObj):
     dayOfWeek = calendar.day_name[datetimeObj.weekday()]
     if dayOfWeek == "Saturday" or dayOfWeek == "Sunday":
         return True
 
     dateStr = datetimeObj.strftime(DateFormat)
-    holidays = getHolidays()
+    holidays = get_holidays()
     if dateStr in holidays:
         return True
     else:
         return False
 
 
-def isTodayHoliday():
-    return isHoliday(datetime.now())
+def is_today_holiday():
+    return is_holiday(datetime.now())
 
 
-def isMarketClosedForTheDay():
+def is_market_closed_for_the_day():
     # This method returns true if the current time is > marketEndTime
     # Please note this will not return true if current time is < marketStartTime on a trading day
-    if isTodayHoliday():
+    if is_today_holiday():
         return True
     now = datetime.now()
-    marketEndTime = getMarketEndTime()
+    marketEndTime = get_market_endtime()
     return now > marketEndTime
 
 
 def prepareMonthlyExpiryFuturesSymbol(inputSymbol, expiryDay=2):
-    expiryDateTime = getMonthlyExpiryDayDate(expiryDay=expiryDay)
-    expiryDateMarketEndTime = getMarketEndTime(expiryDateTime)
+    expiryDateTime = get_monthly_expiry_day(expiryDay=expiryDay)
+    expiryDateMarketEndTime = get_market_endtime(expiryDateTime)
     now = datetime.now()
     if now > expiryDateMarketEndTime:
         # increasing today date by 20 days to get some day in next month passing to getMonthlyExpiryDayDate()
-        expiryDateTime = getMonthlyExpiryDayDate(now + timedelta(days=20), expiryDay)
+        expiryDateTime = get_monthly_expiry_day(now + timedelta(days=20), expiryDay)
     year2Digits = str(expiryDateTime.year)[2:]
     monthShort = calendar.month_name[expiryDateTime.month].upper()[0:3]
     futureSymbol = inputSymbol + year2Digits + monthShort + "FUT"

@@ -6,8 +6,8 @@ from models.user import UserDetails
 
 @dataclass
 class TickData:
-    def __init__(self, tradingSymbol):
-        self.tradingSymbol = tradingSymbol
+    def __init__(self, trading_symbol):
+        self.trading_symbol = trading_symbol
         self.lastTradedPrice = 0
         self.lastTradedQuantity = 0
         self.avgTradedPrice = 0
@@ -55,7 +55,7 @@ class Segment(Enum):
     EQUITY = "EQUITY"
     FNO = "FNO"
     CURRENCY = "CURRENCY"
-    COMMADITY = "COMMADITY"
+    COMMODITY = "COMMODITY"
 
 
 class TradeExitReason(Enum):

@@ -7,30 +7,29 @@ from abc import ABC, abstractmethod
 from typing import Type
 
 import instruments
-from broker import BaseHandler, brokers, load_broker_module
+from broker import BaseHandler
 from core.strategy import BaseStrategy, StartTimedBaseStrategy
 from core.tradeManager import TradeManager
 from exceptions import DeRegisterStrategyException
 from models import UserDetails
-from utils import findNumberOfDaysBeforeWeeklyExpiryDay, isTodayWeeklyExpiryDay
 
 
 class BaseAlgo(threading.Thread, ABC):
-    accessToken: str
+    access_token: str
     short_code: str
-    userDetails: UserDetails
-    tradeManager: TradeManager
-    brokerHandler: BaseHandler
+    user_details: UserDetails
+    trade_manager: TradeManager
+    broker_handler: BaseHandler
 
     def __init__(self, group=None, target=None, name=None, args=(), kwargs=None):
         super(BaseAlgo, self).__init__(group=group, target=target, name=name)
         (
-            self.accessToken,
+            self.access_token,
             self.short_code,
             self.multiple,
         ) = args
-        self.tradeManager = None
-        self.brokerHandler = None
+        self.trade_manager = None
+        self.broker_handler = None
         self.tasks = []
 
     def run(self):
@@ -39,72 +38,74 @@ class BaseAlgo(threading.Thread, ABC):
         self.loop.set_debug(True)
         self.loop.run_forever()
 
-    def startAlgo(self):
+    def start_algo(self):
 
-        if self.tradeManager is not None:
+        if self.trade_manager is not None:
             logging.info("Algo has already started..")
             return
 
         logging.info("Starting Algo...")
 
-        instrumentsList = instruments.fetchInstruments(self.short_code, self.brokerHandler)
+        all_instruments = instruments.fetch_instruments(self.short_code, self.broker_handler)
 
-        if len(instrumentsList) == 0:
+        if len(all_instruments) == 0:
             # something is wrong. We need to inform the user
             logging.warn("Algo not started.")
             return
 
         asyncio.set_event_loop(self.loop)
 
-        tm = TradeManager(self.short_code, self.accessToken, self.brokerHandler)
-        self.tradeManager = tm
+        tm = TradeManager(self.short_code, self.access_token, self.broker_handler)
+        self.trade_manager = tm
 
         tm_task = asyncio.run_coroutine_threadsafe(tm.run(), self.loop)
         self.tasks.append(tm_task)
 
-        tm__order_task = asyncio.run_coroutine_threadsafe(tm.placeOrders(), self.loop)
+        tm__order_task = asyncio.run_coroutine_threadsafe(tm.place_orders(), self.loop)
         self.tasks.append(tm__order_task)
 
         # breaking here to move to async mode
 
         # sleep for 2 seconds for TradeManager to get initialized
-        while not self.tradeManager.isReady:
-            if not self.tradeManager.is_alive():
+        while not self.trade_manager.is_ready:
+            if not self.trade_manager.is_alive():
                 logging.info("Ending Algo...")
                 return
             time.sleep(2)
 
-        start_strategies_fut = asyncio.run_coroutine_threadsafe(self.startStrategies(self.short_code, self.multiple), self.loop)
+        start_strategies_fut = asyncio.run_coroutine_threadsafe(self.start_strategies(self.short_code, self.multiple), self.loop)
         self.tasks.append(start_strategies_fut)
 
         logging.info("Algo started.")
 
     @abstractmethod
-    async def startStrategies(self, short_code, multiple=0): ...
+    async def start_strategies(self, short_code, multiple=0): ...
 
-    async def startStrategy(self, strategy: Type[BaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
-        strategyInstance = strategy(short_code, self.brokerHandler, multiple)  # type: ignore
-        self._startStrategy(strategyInstance, run)
+    async def start_strategy(self, strategy: Type[BaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
+        strategy_instance = strategy(short_code, self.broker_handler, multiple)  # type: ignore
+        self._start_strategy(strategy_instance, run)
 
-    async def startTimedStrategy(self, strategy: Type[StartTimedBaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None):
-        strategyInstance = strategy(short_code, startTimestamp, self.brokerHandler, multiple)
-        self._startStrategy(strategyInstance, run)
+    async def start_timed_strategy(
+        self, strategy: Type[StartTimedBaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None
+    ):
+        strategy_instance = strategy(short_code, startTimestamp, self.broker_handler, multiple)
+        self._start_strategy(strategy_instance, run)
 
-    def _startStrategy(self, strategyInstance, run):
-        strategyInstance.trades = self.tradeManager.getAllTradesByStrategy(strategyInstance.getName())
-        strategyInstance.runConfig = run
+    def _start_strategy(self, strategy_instance, run):
+        strategy_instance.trades = self.trade_manager.get_trades_by_strategy(strategy_instance.getName())
+        strategy_instance.runConfig = run
 
-        strategy_task = asyncio.create_task(strategyInstance.run())
-        strategy_task.set_name(strategyInstance.getName())
-        strategy_task.add_done_callback(self.handleException)
+        strategy_task = asyncio.create_task(strategy_instance.run())
+        strategy_task.set_name(strategy_instance.getName())
+        strategy_task.add_done_callback(self.handle_exception)
 
         self.tasks.append(strategy_task)
-        self.tradeManager.registerStrategy(strategyInstance)
+        self.trade_manager.register_strategy(strategy_instance)
 
-    def handleException(self, task):
+    def handle_exception(self, task):
         if task.exception() is not None:
             logging.info("Exception in %s", task.get_name())
             logging.info(task.exception())
             if isinstance(task.exception(), DeRegisterStrategyException):
-                self.tradeManager.deRgisterStrategy(task.get_name())
+                self.trade_manager.dergister_strategy(task.get_name())
                 pass

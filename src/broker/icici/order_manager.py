@@ -1,60 +1,60 @@
 import logging
 
 from broker.base import BaseOrderManager
-from instruments import getInstrumentDataBySymbol
+from instruments import get_instrument_data_by_symbol
 from models import Direction, OrderStatus, OrderType
 from models.order import Order, OrderInputParams
-from utils import getEpoch
+from utils import get_epoch
 
 
 class ICICIOrderManager(BaseOrderManager):
 
-    def __init__(self, short_code, brokerHandle):
-        super().__init__("icici", brokerHandle)
+    def __init__(self, short_code, broker_handle):
+        super().__init__("icici", broker_handle)
         self.short_code = short_code
 
-    def placeOrder(self, orderInputParams):
-        logging.debug("%s:%s:: Going to place order with params %s", self.broker, self.short_code, orderInputParams)
-        breeze = self.brokerHandle.broker
-        orderInputParams.qty = int(orderInputParams.qty)
+    def place_order(self, order_input_params):
+        logging.debug("%s:%s:: Going to place order with params %s", self.broker, self.short_code, order_input_params)
+        breeze = self.broker_handle.broker
+        order_input_params.qty = int(order_input_params.qty)
         import math
 
-        freeze_limit = 900 if orderInputParams.tradingSymbol.startswith("BANK") else 1800
-        isd = getInstrumentDataBySymbol(self.short_code, orderInputParams.tradingSymbol)
+        freeze_limit = 900 if order_input_params.trading_symbol.startswith("BANK") else 1800
+        isd = get_instrument_data_by_symbol(self.short_code, order_input_params.trading_symbol)
         lot_size = isd["lot_size"]
         # leg_count = max(math.ceil(orderInputParams.qty/freeze_limit), 2)
         # slice = orderInputParams.qty / leg_count
         # iceberg_quantity = math.ceil(slice / lot_size) * lot_size
         # iceberg_legs = leg_count
 
-        if orderInputParams.qty > freeze_limit and orderInputParams.orderType == OrderType.MARKET:
-            orderInputParams.orderType = OrderType.LIMIT
+        if order_input_params.qty > freeze_limit and order_input_params.orderType == OrderType.MARKET:
+            order_input_params.orderType = OrderType.LIMIT
 
         try:
-            orderId = breeze.place_order(
+            order_id = breeze.place_order(
                 stock_code=isd["name"],
                 # variety= breeze.VARIETY_REGULAR if orderInputParams.qty<=freeze_limit else breeze.VARIETY_ICEBERG,
                 # iceberg_quantity = iceberg_quantity,
-                # tradingsymbol=orderInputParams.tradingSymbol,
-                exchange_code=orderInputParams.exchange if orderInputParams.isFnO == True else breeze.EXCHANGE_NSE,
-                product=self.convertToBrokerProductType(orderInputParams.tradingSymbol),
-                action=self.convertToBrokerDirection(orderInputParams.direction),
-                order_type=self.convertToBrokerOrderType(orderInputParams.orderType),
-                quantity=orderInputParams.qty,
-                price=orderInputParams.price if orderInputParams.orderType != OrderType.MARKET else "",
+                # tradingsymbol=orderInputParams.trading_symbol,
+                exchange_code=order_input_params.exchange if order_input_params.isFnO == True else breeze.EXCHANGE_NSE,
+                product=self._convert_to_broker_product(order_input_params.trading_symbol),
+                action=self._convert_to_broker_direction(order_input_params.direction),
+                order_type=self._covert_to_broker_order(order_input_params.orderType),
+                quantity=order_input_params.qty,
+                price=order_input_params.price if order_input_params.orderType != OrderType.MARKET else "",
                 validity="day",
-                stoploss=orderInputParams.triggerPrice if orderInputParams.orderType == OrderType.SL_LIMIT else "",
-                user_remark=orderInputParams.tag[:20],
-                right=self.getRight(orderInputParams.tradingSymbol),
+                stoploss=order_input_params.triggerPrice if order_input_params.orderType == OrderType.SL_LIMIT else "",
+                user_remark=order_input_params.tag[:20],
+                right=self._get_instrument_right(order_input_params.trading_symbol),
                 strike_price=isd["strike"],
                 expiry_date=isd["expiry"],
             )
 
-            logging.info("%s:%s:: Order placed successfully, orderId = %s with tag: %s", self.broker, self.short_code, orderId, orderInputParams.tag)
-            order = Order(orderInputParams)
-            order.orderId = orderId["Success"]["order_id"]
-            order.orderPlaceTimestamp = getEpoch()
-            order.lastOrderUpdateTimestamp = getEpoch()
+            logging.info("%s:%s:: Order placed successfully, orderId = %s with tag: %s", self.broker, self.short_code, order_id, order_input_params.tag)
+            order = Order(order_input_params)
+            order.orderId = order_id["Success"]["order_id"]
+            order.orderPlaceTimestamp = get_epoch()
+            order.lastOrderUpdateTimestamp = get_epoch()
             return order
         except Exception as e:
             if "Too many requests" in str(e):
@@ -62,15 +62,15 @@ class ICICIOrderManager(BaseOrderManager):
                 import time
 
                 time.sleep(1)
-                self.placeOrder(orderInputParams)
-            logging.info("%s:%s Order placement failed: %s", self.broker, self.short_code, str(orderId))
-            if "price cannot be" in orderId["Error"]:
-                orderInputParams.orderType = OrderType.LIMIT
-                return self.placeOrder(orderInputParams)
+                self.place_order(order_input_params)
+            logging.info("%s:%s Order placement failed: %s", self.broker, self.short_code, str(order_id))
+            if "price cannot be" in order_id["Error"]:
+                order_input_params.orderType = OrderType.LIMIT
+                return self.place_order(order_input_params)
             else:
                 raise Exception(str(e))
 
-    def modifyOrder(self, order, orderModifyParams, tradeQty):
+    def modify_order(self, order, orderModifyParams, tradeQty):
         logging.info("%s:%s:: Going to modify order with params %s", self.broker, self.short_code, orderModifyParams)
 
         if order.orderType == OrderType.SL_LIMIT and orderModifyParams.newTriggerPrice == order.triggerPrice:
@@ -82,8 +82,8 @@ class ICICIOrderManager(BaseOrderManager):
             logging.info("%s:%s:: Not Going to modify order with params %s", self.broker, self.short_code, orderModifyParams)
             return order
 
-        breeze = self.brokerHandle.broker
-        freeze_limit = 900 if order.tradingSymbol.startswith("BANK") else 1800
+        breeze = self.broker_handle.broker
+        freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
 
         try:
             orderId = breeze.modify_order(
@@ -95,7 +95,7 @@ class ICICIOrderManager(BaseOrderManager):
             )
 
             logging.info("%s:%s Order modified successfully for orderId = %s", self.broker, self.short_code, orderId)
-            order.lastOrderUpdateTimestamp = getEpoch()
+            order.lastOrderUpdateTimestamp = get_epoch()
             return order
         except Exception as e:
             if "Too many requests" in str(e):
@@ -103,36 +103,19 @@ class ICICIOrderManager(BaseOrderManager):
                 import time
 
                 time.sleep(1)
-                self.modifyOrder(order, orderModifyParams, tradeQty)
+                self.modify_order(order, orderModifyParams, tradeQty)
             logging.info("%s:%s Order %s modify failed: %s", self.broker, self.short_code, order.orderId, str(e))
             raise Exception(str(e))
 
-    def modifyOrderToMarket(self, order):
-        raise Exception("Method not to be called")
-        # logging.debug('%s:%s:: Going to modify order with params %s', self.broker, self.short_code)
-        # breeze = self.brokerHandle.broker
-        # try:
-        #   orderId = breeze.modify_order(
-        #     variety= breeze.VARIETY_REGULAR,
-        #     order_id=order.orderId,
-        #     order_type=breeze.ORDER_TYPE_MARKET)
-
-        #   logging.info('%s:%s Order modified successfully to MARKET for orderId = %s', self.broker, self.short_code, orderId)
-        #   order.lastOrderUpdateTimestamp = Utils.getEpoch()
-        #   return order
-        # except Exception as e:
-        #   logging.info('%s:%s Order modify to market failed: %s', self.broker, self.short_code, str(e))
-        #   raise Exception(str(e))
-
-    def cancelOrder(self, order):
+    def cancel_order(self, order):
         logging.debug("%s:%s Going to cancel order %s", self.broker, self.short_code, order.orderId)
-        breeze = self.brokerHandle.broker
-        freeze_limit = 900 if order.tradingSymbol.startswith("BANK") else 1800
+        breeze = self.broker_handle.broker
+        freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
         try:
             orderId = breeze.cancel_order(order_id=order.orderId, exchange_code="NFO")
 
             logging.info("%s:%s Order cancelled successfully, orderId = %s", self.broker, self.short_code, orderId)
-            order.lastOrderUpdateTimestamp = getEpoch()
+            order.lastOrderUpdateTimestamp = get_epoch()
             return order
         except Exception as e:
             if "Too many requests" in str(e):
@@ -140,13 +123,13 @@ class ICICIOrderManager(BaseOrderManager):
                 import time
 
                 time.sleep(1)
-                self.cancelOrder(order)
+                self.cancel_order(order)
             logging.info("%s:%s Order cancel failed: %s", self.broker, self.short_code, str(e))
             raise Exception(str(e))
 
-    def fetchAndUpdateAllOrderDetails(self, orders):
+    def fetch_update_all_orders(self, orders):
         logging.debug("%s:%s Going to fetch order book", self.broker, self.short_code)
-        breeze = self.brokerHandle
+        breeze = self.broker_handle
         orderBook = None
         try:
             orderBook = breeze.orders()
@@ -189,39 +172,39 @@ class ICICIOrderManager(BaseOrderManager):
                 logging.debug("%s:%s:%s Updated order %s", self.broker, self.short_code, orders[foundOrder], foundOrder)
                 numOrdersUpdated += 1
             elif foundChildOrder != None:
-                oip = OrderInputParams(parentOrder.tradingSymbol)
+                oip = OrderInputParams(parentOrder.trading_symbol)
                 oip.exchange = parentOrder.exchange
-                oip.productType = parentOrder.productType
-                oip.orderType = parentOrder.orderType
+                oip.product_type = parentOrder.productType
+                oip.order_type = parentOrder.orderType
                 oip.price = parentOrder.price
-                oip.triggerPrice = parentOrder.triggerPrice
+                oip.trigger_price = parentOrder.triggerPrice
                 oip.qty = parentOrder.qty
                 oip.tag = parentOrder.tag
-                oip.productType = parentOrder.productType
+                oip.product_type = parentOrder.productType
                 order = Order(oip)
                 order.orderId = bOrder["order_id"]
                 order.parentOrderId = parentOrder.orderId
-                order.orderPlaceTimestamp = getEpoch()  # TODO should get from bOrder
+                order.orderPlaceTimestamp = get_epoch()  # TODO should get from bOrder
                 missingOrders.append(order)
 
         return missingOrders
 
-    def getRight(self, tradingSymbol):
-        if tradingSymbol[-2:] == "PE":
+    def _get_instrument_right(self, trading_symbol):
+        if trading_symbol[-2:] == "PE":
             return "Put"
-        elif tradingSymbol[-2:] == "CE":
+        elif trading_symbol[-2:] == "CE":
             return "Call"
         return "Others"
 
-    def convertToBrokerProductType(self, tradingSymbol):
-        if tradingSymbol[-2:] == "PE" or tradingSymbol[-2:] == "CE":
+    def _convert_to_broker_product(self, trading_symbol):
+        if trading_symbol[-2:] == "PE" or trading_symbol[-2:] == "CE":
             return "options"
-        elif "FUT" in tradingSymbol:
+        elif "FUT" in trading_symbol:
             return "futures"
         return "cash"
 
-    def convertToBrokerOrderType(self, orderType):
-        breeze = self.brokerHandle.broker
+    def _covert_to_broker_order(self, orderType):
+        breeze = self.broker_handle.broker
         if orderType == OrderType.LIMIT:
             return "limit"
         elif orderType == OrderType.MARKET:
@@ -230,15 +213,15 @@ class ICICIOrderManager(BaseOrderManager):
             return "stoploss"
         return None
 
-    def convertToBrokerDirection(self, direction):
-        breeze = self.brokerHandle.broker
+    def _convert_to_broker_direction(self, direction):
+        breeze = self.broker_handle.broker
         if direction == Direction.LONG:
             return "buy"
         elif direction == Direction.SHORT:
             return "sell"
         return None
 
-    def updateOrder(self, order, data):
+    def update_order(self, order, data):
         if order is None:
             return
         logging.info(data)

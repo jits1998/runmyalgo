@@ -3,7 +3,7 @@ from models import Direction, OrderType, ProductType, Segment
 
 class Order:
     def __init__(self, orderInputParams=None):
-        self.tradingSymbol = orderInputParams.tradingSymbol if orderInputParams != None else ""
+        self.trading_symbol = orderInputParams.trading_symbol if orderInputParams != None else ""
         self.exchange = orderInputParams.exchange if orderInputParams != None else "NSE"
         self.productType = orderInputParams.productType if orderInputParams != None else ""
         self.orderType = orderInputParams.orderType if orderInputParams != None else ""  # LIMIT/MARKET/SL-LIMIT/SL-MARKET
@@ -28,7 +28,7 @@ class Order:
             + ", orderStatus="
             + str(self.orderStatus)
             + ", symbol="
-            + str(self.tradingSymbol)
+            + str(self.trading_symbol)
             + ", productType="
             + str(self.productType)
             + ", orderType="
@@ -50,42 +50,42 @@ class Order:
 
 class OrderInputParams:
     exchange: str = "NSE"  # default
-    isFnO: bool = False
+    is_fno: bool = False
     segment: Segment = Segment.EQUITY  # default
-    productType: ProductType = ProductType.MIS  # default
-    tradingSymbol: str
+    product_type: ProductType = ProductType.MIS  # default
+    trading_symbol: str
     direction: Direction
-    orderType: OrderType
+    order_type: OrderType
     qty: int
     price: float
-    triggerPrice: float  # Applicable in case of SL order
+    trigger_price: float  # Applicable in case of SL order
     tag: str
 
-    def __init__(self, tradingSymbol):
-        self.tradingSymbol = tradingSymbol
+    def __init__(self, trading_symbol):
+        self.trading_symbol = trading_symbol
 
     def __str__(self):
         return (
             "symbol="
-            + self.tradingSymbol
+            + self.trading_symbol
             + ", exchange="
             + self.exchange
             + ", productType="
-            + self.productType
+            + self.product_type
             + ", segment="
             + self.segment
             + ", direction="
             + self.direction
             + ", orderType="
-            + self.orderType
+            + self.order_type
             + ", qty="
             + str(self.qty)
             + ", price="
             + str(self.price)
             + ", triggerPrice="
-            + str(self.triggerPrice)
+            + str(self.trigger_price)
             + ", isFnO="
-            + str(self.isFnO)
+            + str(self.is_fno)
         )
 
 

@@ -2,150 +2,149 @@ import json
 import logging
 import math
 import os
-from datetime import datetime
 from typing import Dict
 
 from broker.base import BaseHandler
-from config import getServerConfig
-from utils import getEpoch
+from config import get_server_config
+from utils import get_epoch
 
-instrumentsData: Dict[str, Dict] = {}
-symbolToInstrumentMap: Dict[str, Dict[str, str]] = {}
-tokenToInstrumentMap: Dict[str, Dict[str, str]] = {}
-symbolToCMPMap: Dict[str, Dict[str, float]] = {}
-
-
-def getCMP(short_code, tradingSymbol) -> float:
-    return symbolToCMPMap[short_code][tradingSymbol]
+instruments_data: Dict[str, Dict] = {}
+symbol_to_instrument: Dict[str, Dict[str, str]] = {}
+token_to_instrument: Dict[str, Dict[str, str]] = {}
+symbol_to_CMP: Dict[str, Dict[str, float]] = {}
 
 
-def getTimestampsData(short_code):
-    serverConfig = getServerConfig()
-    timestampsFilePath = os.path.join(serverConfig["deployDir"], short_code + "_timestamps.json")
-    if os.path.exists(timestampsFilePath) == False:
+def get_cmp(short_code, trading_symbol) -> float:
+    return symbol_to_CMP[short_code][trading_symbol]
+
+
+def get_timestamps(short_code):
+    server_config = get_server_config()
+    timestamps_filepath = os.path.join(server_config["deploy_dir"], short_code + "_timestamps.json")
+    if os.path.exists(timestamps_filepath) == False:
         return {}
-    timestampsFile = open(timestampsFilePath, "r")
-    timestamps = json.loads(timestampsFile.read())
+    with open(timestamps_filepath, "r") as timestamps_file:
+        timestamps = json.loads(timestamps_file.read())
     return timestamps
 
 
-def saveTimestampsData(short_code, timestamps={}):
-    serverConfig = getServerConfig()
-    timestampsFilePath = os.path.join(serverConfig["deployDir"], short_code + "_timestamps.json")
-    with open(timestampsFilePath, "w") as timestampsFile:
-        json.dump(timestamps, timestampsFile, indent=2)
-    print("saved timestamps data to file " + timestampsFilePath)
+def save_timestamps(short_code, timestamps={}):
+    server_config = get_server_config()
+    timestamps_filepath = os.path.join(server_config["deploy_dir"], short_code + "_timestamps.json")
+    with open(timestamps_filepath, "w") as timestamps_file:
+        json.dump(timestamps, timestamps_file, indent=2)
+    print("saved timestamps data to file " + timestamps_filepath)
 
 
-def shouldFetchFromServer(short_code):
-    timestamps = getTimestampsData(short_code)
-    if "instrumentsLastSavedAt" not in timestamps:
+def should_fetch_from_server(short_code):
+    timestamps = get_timestamps(short_code)
+    if "instruments_last_saved_at" not in timestamps:
         return True
-    lastSavedTimestamp = timestamps["instrumentsLastSavedAt"]
-    nowEpoch = getEpoch()
-    if nowEpoch - lastSavedTimestamp >= 24 * 60 * 60:
+    last_saved = timestamps["instruments_last_saved_at"]
+    now_epoch = get_epoch()
+    if now_epoch - last_saved >= 24 * 60 * 60:
         logging.info("Instruments: shouldFetchFromServer() returning True as its been 24 hours since last fetch.")
         return True
     return False
 
 
-def updateLastSavedTimestamp(short_code):
-    timestamps = getTimestampsData(short_code)
-    timestamps["instrumentsLastSavedAt"] = getEpoch()
-    saveTimestampsData(short_code, timestamps)
+def update_last_saved(short_code):
+    timestamps = get_timestamps(short_code)
+    timestamps["instruments_last_saved_at"] = get_epoch()
+    save_timestamps(short_code, timestamps)
 
 
-def loadInstruments(short_code):
-    serverConfig = getServerConfig()
-    instrumentsFilepath = os.path.join(serverConfig["deployDir"], short_code + "_instruments.json")
-    if os.path.exists(instrumentsFilepath) == False:
-        logging.warn("Instruments: instrumentsFilepath %s does not exist", instrumentsFilepath)
+def load_instruments(short_code):
+    server_config = get_server_config()
+    instruments_filepath = os.path.join(server_config["deploy_dir"], short_code + "_instruments.json")
+    if os.path.exists(instruments_filepath) == False:
+        logging.warn("Instruments: instrumentsFilepath %s does not exist", instruments_filepath)
         return []  # returns empty list
 
-    isdFile = open(instrumentsFilepath, "r")
+    isdFile = open(instruments_filepath, "r")
     instruments = json.loads(isdFile.read())
-    logging.info("Instruments: loaded %d instruments from file %s", len(instruments), instrumentsFilepath)
+    logging.info("Instruments: loaded %d instruments from file %s", len(instruments), instruments_filepath)
     return instruments
 
 
-def saveInstruments(short_code, instruments=[]):
-    serverConfig = getServerConfig()
-    instrumentsFilepath = os.path.join(serverConfig["deployDir"], short_code + "_instruments.json")
-    with open(instrumentsFilepath, "w") as isdFile:
+def save_instruments(short_code, instruments=[]):
+    server_config = get_server_config()
+    instruments_filepath = os.path.join(server_config["deploy_dir"], short_code + "_instruments.json")
+    with open(instruments_filepath, "w") as isdFile:
         json.dump(instruments, isdFile, indent=2, default=str)
-    logging.info("Instruments: Saved %d instruments to file %s", len(instruments), instrumentsFilepath)
+    logging.info("Instruments: Saved %d instruments to file %s", len(instruments), instruments_filepath)
     # Update last save timestamp
-    updateLastSavedTimestamp(short_code)
+    update_last_saved(short_code)
 
 
-def fetchInstrumentsFromServer(short_code, brokerHandler: BaseHandler):
-    instrumentsList = []
+def fetch_instruments_from_server(short_code, broker_handler: BaseHandler):
+    instruments_list = []
     try:
         logging.info("Going to fetch instruments from server...")
-        instrumentsList = brokerHandler.instruments("NSE")
-        instrumentsListFnO = brokerHandler.instruments("NFO")
-        intrumentListBSE = brokerHandler.instruments("BSE")
-        instrumentsListBFO = brokerHandler.instruments("BFO")
+        instruments_list = broker_handler.instruments("NSE")
+        fno_instruments = broker_handler.instruments("NFO")
+        bse_intruments = broker_handler.instruments("BSE")
+        bfo_instruments = broker_handler.instruments("BFO")
         # Add FnO instrument list to the main list
-        instrumentsList.extend(instrumentsListFnO)
-        instrumentsList.extend(intrumentListBSE)
-        instrumentsList.extend(instrumentsListBFO)
-        logging.info("Fetched %d instruments from server.", len(instrumentsList))
+        instruments_list.extend(fno_instruments)
+        instruments_list.extend(bse_intruments)
+        instruments_list.extend(bfo_instruments)
+        logging.info("Fetched %d instruments from server.", len(instruments_list))
     except Exception as e:
         logging.exception("Exception while fetching instruments from server")
         return []
-    return instrumentsList
+    return instruments_list
 
 
-def fetchInstruments(short_code, brokerHandler: BaseHandler):
-    symbolToCMPMap[short_code] = {}
-    if short_code in instrumentsData:
-        return instrumentsData[short_code]
+def fetch_instruments(short_code, broker_handler: BaseHandler):
+    symbol_to_CMP[short_code] = {}
+    if short_code in instruments_data:
+        return instruments_data[short_code]
 
-    instrumentsList = loadInstruments(short_code)
-    if len(instrumentsList) == 0 or shouldFetchFromServer(short_code) == True:
-        instrumentsList = fetchInstrumentsFromServer(short_code, brokerHandler)
+    instruments_list = load_instruments(short_code)
+    if len(instruments_list) == 0 or should_fetch_from_server(short_code) == True:
+        instruments_list = fetch_instruments_from_server(short_code, broker_handler)
         # Save instruments to file locally
-        if len(instrumentsList) > 0:
-            saveInstruments(short_code, instrumentsList)
+        if len(instruments_list) > 0:
+            save_instruments(short_code, instruments_list)
 
-    if len(instrumentsList) == 0:
+    if len(instruments_list) == 0:
         print("Could not fetch/load instruments data. Hence exiting the app.")
         logging.error("Could not fetch/load instruments data. Hence exiting the app.")
-        return instrumentsList
+        return instruments_list
 
-    symbolToInstrumentMap[short_code] = {}
-    tokenToInstrumentMap[short_code] = {}
-    brokerHandler.instrumentsList = instrumentsList
+    symbol_to_instrument[short_code] = {}
+    token_to_instrument[short_code] = {}
+    broker_handler.instruments_list = instruments_list
 
     try:
-        for isd in instrumentsList:
-            tradingSymbol = isd["tradingsymbol"]
-            instrumentToken = isd["instrument_token"]
-            # logging.info('%s = %d', tradingSymbol, instrumentToken)
-            symbolToInstrumentMap[short_code][tradingSymbol] = isd
-            tokenToInstrumentMap[short_code][instrumentToken] = isd
+        for isd in instruments_list:
+            trading_symbol = isd["tradingsymbol"]
+            instrument_token = isd["instrument_token"]
+            # logging.info('%s = %d', trading_symbol, instrumentToken)
+            symbol_to_instrument[short_code][trading_symbol] = isd
+            token_to_instrument[short_code][instrument_token] = isd
     except Exception as e:
         logging.exception("Exception while fetching instruments from server: %s", str(e))
 
-    logging.info("Fetching instruments done. Instruments count = %d", len(instrumentsList))
-    instrumentsData[short_code] = instrumentsList  # assign the list to static variable
-    return instrumentsList
+    logging.info("Fetching instruments done. Instruments count = %d", len(instruments_list))
+    instruments_data[short_code] = instruments_list  # assign the list to static variable
+    return instruments_list
 
 
-def getInstrumentDataBySymbol(short_code, tradingSymbol):
-    return symbolToInstrumentMap[short_code][tradingSymbol]
+def get_instrument_data_by_symbol(short_code, trading_symbol):
+    return symbol_to_instrument[short_code][trading_symbol]
 
 
-def getInstrumentDataByToken(short_code, instrumentToken):
-    return tokenToInstrumentMap[short_code][instrumentToken]
+def get_instrument_data_by_token(short_code, instrument_token):
+    return token_to_instrument[short_code][instrument_token]
 
 
-def getQuote(handler: BaseHandler, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str):
-    handler.broker.getQuote(tradingSymbol, short_code, isFnO, exchange)
+def get_quote(handler: BaseHandler, trading_symbol: str, short_code: str, isFnO: bool, exchange: str):
+    handler.broker.get_quote(trading_symbol, short_code, isFnO, exchange)
     pass
 
 
-def roundToNSEPrice(short_code: str, tradingSymbol: str, price: float) -> float:
-    tick_size: float = getInstrumentDataBySymbol(short_code, tradingSymbol)["tick_size"]
+def round_to_ticksize(short_code: str, trading_symbol: str, price: float) -> float:
+    tick_size: float = get_instrument_data_by_symbol(short_code, trading_symbol)["tick_size"]
     return max(round(tick_size * math.ceil(price / tick_size), 2), 0.05) if price != 0 else 0

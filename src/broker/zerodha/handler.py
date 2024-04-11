@@ -14,38 +14,38 @@ from core import Quote
 
 class ZerodhaHandler(BaseHandler):
 
-    def __init__(self, brokerHandle: KiteConnect, config) -> None:
-        self.brokerHandle: KiteConnect = brokerHandle
+    def __init__(self, broker_handle: KiteConnect, config) -> None:
+        self.broker_handle: KiteConnect = broker_handle
         self.config = config
 
-    def set_access_token(self, accessToken) -> None:
-        self.brokerHandle.set_access_token(accessToken)
+    def set_access_token(self, access_token) -> None:
+        self.broker_handle.set_access_token(access_token)
 
     def margins(self) -> list:
-        return self.brokerHandle.margins()
+        return self.broker_handle.margins()
 
     def positions(self) -> list:
-        return self.brokerHandle.positions()
+        return self.broker_handle.positions()
 
     def orders(self) -> list:
-        return self.brokerHandle.orders()
+        return self.broker_handle.orders()
 
     def instruments(self, exchange) -> list:
-        return self.brokerHandle.instruments(exchange)
+        return self.broker_handle.instruments(exchange)
 
     def getBrokerHandle(self) -> KiteConnect:
-        return self.brokerHandle
+        return self.broker_handle
 
-    def getQuote(self, tradingSymbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
-        key = (exchange + ":" + tradingSymbol.upper()) if isFnO == True else ("NSE:" + tradingSymbol.upper())
-        quote = Quote(tradingSymbol)
+    def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
+        key = (exchange + ":" + trading_symbol.upper()) if isFnO == True else ("NSE:" + trading_symbol.upper())
+        quote = Quote(trading_symbol)
 
-        bQuoteResp = self._getQuote(key)
+        bQuoteResp = self._get_quote(key)
 
         bQuote = bQuoteResp[key]
 
         # convert broker quote to our system quote
-        quote.tradingSymbol = tradingSymbol
+        quote.trading_symbol = trading_symbol
         quote.lastTradedPrice = bQuote["last_price"]
         quote.lastTradedQuantity = bQuote["last_quantity"]
         quote.avgTradedPrice = bQuote["average_price"]
@@ -66,15 +66,15 @@ class ZerodhaHandler(BaseHandler):
 
         return quote
 
-    def getIndexQuote(self, tradingSymbol: str, short_code: str, exchange: str = "NSE") -> Quote:
-        key = exchange + ":" + tradingSymbol.upper()
+    def get_index_quote(self, trading_symbol: str, short_code: str, exchange: str = "NSE") -> Quote:
+        key = exchange + ":" + trading_symbol.upper()
 
-        bQuoteResp = self._getQuote(key)
+        bQuoteResp = self._get_quote(key)
 
         bQuote = bQuoteResp[key]
         # convert broker quote to our system quote
-        quote = Quote(tradingSymbol)
-        quote.tradingSymbol = tradingSymbol
+        quote = Quote(trading_symbol)
+        quote.trading_symbol = trading_symbol
         quote.lastTradedPrice = bQuote["last_price"]
         ohlc = bQuote["ohlc"]
         quote.open = ohlc["open"]
@@ -84,14 +84,14 @@ class ZerodhaHandler(BaseHandler):
         quote.change = bQuote["net_change"]
         return quote
 
-    def _getQuote(self, key):
+    def _get_quote(self, key):
         retry = True
         bQuoteResp = None
 
         while retry:
             retry = False
             try:
-                bQuoteResp = self.brokerHandle.quote(key)
+                bQuoteResp = self.broker_handle.quote(key)
             except DataException as de:
                 if de.code in [503, 502]:
                     retry = True
@@ -103,5 +103,5 @@ class ZerodhaHandler(BaseHandler):
                 retry = True
             if retry:
                 time.sleep(1)
-                logging.info("retrying getQuote after 1 s for %s", key)
+                logging.info("retrying get_quote after 1 s for %s", key)
         return bQuoteResp

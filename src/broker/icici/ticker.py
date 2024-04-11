@@ -3,22 +3,22 @@ import logging
 import socketio  # type: ignore[import-untyped]
 
 from broker import BaseTicker
-from instruments import getInstrumentDataBySymbol, getInstrumentDataByToken
+from instruments import get_instrument_data_by_symbol, get_instrument_data_by_token
 from models import TickData
 
 
 class ICICITicker(BaseTicker):
-    def __init__(self, short_code, brokerHandler):
-        super().__init__(short_code, brokerHandler)
+    def __init__(self, short_code, broker_handler):
+        super().__init__(short_code, broker_handler)
 
-    def startTicker(self, appKey, accessToken):
-        if accessToken == None:
-            logging.error("ICICITicker startTicker: Cannot start ticker as accessToken is empty")
+    def start_ticker(self, appKey, access_token):
+        if access_token == None:
+            logging.error("ICICITicker startTicker: Cannot start ticker as access_token is empty")
             return
 
         # self.brokerLogin.getBrokerHandle().broker.
 
-        ticker = self.brokerHandler.broker
+        ticker = self.broker_handler.broker
 
         logging.info("ICICITicker: Going to connect..")
         self.ticker = ticker
@@ -30,9 +30,9 @@ class ICICITicker(BaseTicker):
                 logging.debug(bTick["symbol"] + " => " + str(bTick["last"]))
                 # convert broker specific Ticks to our system specific Ticks (models.TickData) and pass to super class function
                 ticks = []
-                isd = getInstrumentDataByToken(self.short_code, bTick["symbol"][4:])
-                tradingSymbol = isd["tradingsymbol"]
-                tick = TickData(tradingSymbol)
+                isd = get_instrument_data_by_token(self.short_code, bTick["symbol"][4:])
+                trading_symbol = isd["tradingsymbol"]
+                tick = TickData(trading_symbol)
                 tick.lastTradedPrice = bTick["last"]
                 if not isd["segment"] == "INDICES":
                     tick.lastTradedQuantity = bTick["ltq"]
@@ -48,7 +48,7 @@ class ICICITicker(BaseTicker):
                 tick.close = bTick["close"]
                 tick.change = bTick["change"]
                 ticks.append(tick)
-                self.onNewTicks(ticks)
+                self.on_new_ticks(ticks)
 
             # ticker.subscribe_feeds(get_order_notification=True)
             self.ticker.on_ticks = on_ticks
@@ -58,15 +58,15 @@ class ICICITicker(BaseTicker):
             else:
                 raise e
 
-    def stopTicker(self):
+    def stop_ticker(self):
         logging.info("ICICITicker: stopping..")
         self.ticker.close(1000, "Manual close")
 
-    def registerSymbols(self, symbols, mode=None):
+    def register_symbols(self, symbols, mode=None):
         # breeze.subscribe_feeds(stock_token="1.1!500780")
         tokens = []
         for symbol in symbols:
-            isd = getInstrumentDataBySymbol(self.short_code, symbol)
+            isd = get_instrument_data_by_symbol(self.short_code, symbol)
             token = isd["instrument_token"]
             logging.debug("ICICITicker registerSymbol: %s token = %s", symbol, token)
             print(self.ticker.subscribe_feeds(stock_token="4.1!" + token))
@@ -74,10 +74,10 @@ class ICICITicker(BaseTicker):
 
         logging.debug("ICICITicker Subscribing tokens %s", tokens)
 
-    def unregisterSymbols(self, symbols):
+    def unregister_symbols(self, symbols):
         tokens = []
         for symbol in symbols:
-            isd = getInstrumentDataBySymbol(self.short_code, symbol)
+            isd = get_instrument_data_by_symbol(self.short_code, symbol)
             token = isd["instrument_token"]
             logging.debug("ICICITicker unregisterSymbols: %s token = %s", symbol, token)
             tokens.append(token)
