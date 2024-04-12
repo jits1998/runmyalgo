@@ -1,21 +1,21 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from models import Direction, ProductType, TradeState
 from models.order import Order
 
 
 class Trade:
-    direction: Direction
+    direction: Optional[Direction]
 
     def __init__(self, trading_symbol=None, strategy="") -> None:
         self.exchange = "NSE"
         self.tradeID = ((strategy + ":") if not strategy == "" else "") + str(uuid.uuid4())  # Unique ID for each trade
         self.trading_symbol = trading_symbol
         self.strategy = strategy
-        self.direction
+        self.direction = None
         self.productType = ProductType.MIS
         self.is_futures = False  # Futures trade
         self.isOptions = False  # Options trade

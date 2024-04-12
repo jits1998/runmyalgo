@@ -153,7 +153,7 @@ class BaseStrategy(ABC):
 
         self.fromDict(self.strategyData)
 
-        if self.strategyData is None:  # Enabled status, SLs and target may have been adjusted
+        if self.strategyData is None or len(self.strategyData) == 0:  # Enabled status, SLs and target may have been adjusted
 
             # NOTE: This should not be overriden in Derived class
             if self.enabled == False:
@@ -781,7 +781,7 @@ class BaseStrategy(ABC):
         return dict
 
     def fromDict(self, dict):
-        if not dict is None:
+        if not dict is None and len(self.strategyData) > 0:
             self.enabled = dict["enabled"]
             self.strategySL = dict["strategySL"]
             self.strategyTarget = dict["strategyTarget"]
