@@ -8,7 +8,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Type
 
-import psycopg2
+import psycopg2  # type: ignore
 
 import instruments
 from broker import tickers
@@ -94,12 +94,15 @@ class BaseAlgo(threading.Thread, ABC):
             time.sleep(2)
 
         play_task = asyncio.run_coroutine_threadsafe(self.play(), self.loop)
+        play_task.add_done_callback(self.handle_exception)
         self.tasks.append(play_task)
 
         order_task = asyncio.run_coroutine_threadsafe(self.place_orders(), self.loop)
+        order_task.add_done_callback(self.handle_exception)
         self.tasks.append(order_task)
 
         start_strategies_fut = asyncio.run_coroutine_threadsafe(self.start_strategies(self.short_code, self.multiple), self.loop)
+        start_strategies_fut.add_done_callback(self.handle_exception)
         self.tasks.append(start_strategies_fut)
 
         self.status = AlgoStatus.STARTED
@@ -277,6 +280,14 @@ class BaseAlgo(threading.Thread, ABC):
         with open(strategiesFilePath, "w") as tFile:
             json.dump(self.strategy_to_instance, tFile, indent=2, cls=TradeEncoder)
         logging.debug("TradeManager: Saved %d strategies to file %s", len(self.strategy_to_instance.values()), strategiesFilePath)
+
+    def register_strategy(self, strategy_instance):
+        self.strategy_to_instance[strategy_instance.getName()] = strategy_instance
+        strategy_instance.strategyData = self.strategies_data.get(strategy_instance.getName(), None)
+        strategy_instance.orderQueue = self.order_queue
+
+    def dergister_strategy(self, strategy_name):
+        del self.strategy_to_instance[strategy_name]
 
 
 class TradeEncoder(json.JSONEncoder):

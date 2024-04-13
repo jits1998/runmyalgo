@@ -13,7 +13,7 @@ flask_app.config["SESSION_TYPE"] = "filesystem"
 Session(flask_app)
 flask_app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(minutes=180)
 flask_app.config.update(
-    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SAMESITE="None",
 )
 
 # TODO override with proper config file
