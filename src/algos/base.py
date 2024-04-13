@@ -281,14 +281,6 @@ class BaseAlgo(threading.Thread, ABC):
             json.dump(self.strategy_to_instance, tFile, indent=2, cls=TradeEncoder)
         logging.debug("TradeManager: Saved %d strategies to file %s", len(self.strategy_to_instance.values()), strategiesFilePath)
 
-    def register_strategy(self, strategy_instance):
-        self.strategy_to_instance[strategy_instance.getName()] = strategy_instance
-        strategy_instance.strategyData = self.strategies_data.get(strategy_instance.getName(), None)
-        strategy_instance.orderQueue = self.order_queue
-
-    def dergister_strategy(self, strategy_name):
-        del self.strategy_to_instance[strategy_name]
-
 
 class TradeEncoder(json.JSONEncoder):
     def default(self, o):

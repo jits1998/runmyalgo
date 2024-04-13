@@ -10,8 +10,9 @@ from broker.base import Ticker as BaseTicker
 from config import get_system_config
 from core import Quote
 from instruments import get_instrument_data_by_symbol, get_instrument_data_by_token
-from models import TickData
+from models import Direction, OrderStatus, OrderType, ProductType, TickData
 from models.order import Order, OrderInputParams, OrderModifyParams
+from utils import get_epoch
 
 
 class Broker(Base[KiteConnect]):
@@ -19,12 +20,12 @@ class Broker(Base[KiteConnect]):
     def login(self, args: Dict) -> str:
         logging.info("==> ZerodhaLogin .args => %s", args)
         systemConfig = get_system_config()
-        self.broker_handle = KiteConnect(api_key=self.user_details["key"])
+        self.broker_name_handle = KiteConnect(api_key=self.user_details["key"])
         redirect_url = None
         if "request_token" in args:
             requestToken = args["request_token"]
             logging.info("Zerodha requestToken = %s", requestToken)
-            broker_session = self.broker_handle.generate_session(requestToken, api_secret=self.user_details["secret"])
+            broker_session = self.broker_name_handle.generate_session(requestToken, api_secret=self.user_details["secret"])
 
             if not broker_session["user_id"] == self.user_details["clientID"]:
                 raise Exception("Invalid User Credentials")
@@ -47,16 +48,208 @@ class Broker(Base[KiteConnect]):
 
         return redirectUrl
 
-    def place_order(self, order_input_params: OrderInputParams) -> bool:
-        return False
+    def place_order(self, oip: OrderInputParams):
+        logging.debug("%s:%s:: Going to place order with params %s", self.broker_name, self.short_code, oip)
+        kite = self.broker_handle
+        oip.qty = int(oip.qty)
+        import math
 
-    def modify_order(self, order: Order, order_modify_params: OrderModifyParams) -> bool:
-        return False
+        freeze_limit = 900 if oip.trading_symbol.startswith("BANK") else 1800
+        lot_size = get_instrument_data_by_symbol(self.short_code, oip.trading_symbol)["lot_size"]
+        leg_count = max(math.ceil(oip.qty / freeze_limit), 2)
+        slice = oip.qty / leg_count
+        iceberg_quantity = math.ceil(slice / lot_size) * lot_size
+        iceberg_legs = leg_count
 
-    def cancel_order(self, order: Order) -> bool:
-        return False
+        if oip.qty > freeze_limit and oip.order_type == OrderType.MARKET:
+            oip.order_type = OrderType.LIMIT
 
-    def fetch_update_all_orders(self, orders: List[Order]) -> None: ...
+        try:
+            orderId = kite.place_order(
+                variety=kite.VARIETY_REGULAR if oip.qty <= freeze_limit else kite.VARIETY_ICEBERG,
+                iceberg_legs=iceberg_legs,
+                iceberg_quantity=iceberg_quantity,
+                exchange=oip.exchange if oip.is_fno == True else kite.EXCHANGE_NSE,
+                tradingsymbol=oip.trading_symbol,
+                transaction_type=self.convert_to_broker_direction(oip.direction),
+                quantity=oip.qty,
+                price=oip.price,
+                trigger_price=oip.trigger_price,
+                product=self.convert_to_broker_product(oip.product_type),
+                order_type=self.covert_to_broker_order(oip.order_type),
+                tag=oip.tag[:20],
+            )
+
+            logging.info("%s:%s:: Order placed successfully, orderId = %s with tag: %s", self.broker_name, self.short_code, orderId, oip.tag)
+            order = Order(oip)
+            order.order_id = orderId
+            order.place_timestamp = get_epoch()
+            order.update_timestamp = get_epoch()
+            return order
+        except Exception as e:
+            if "Too many requests" in str(e):
+                logging.info("%s:%s retrying order placement in 1 s for %s", self.broker_name, self.short_code, order.order_id)
+                import time
+
+                time.sleep(1)
+                self.place_order(oip)
+            logging.info("%s:%s Order placement failed: %s", self.broker_name, self.short_code, str(e))
+            if "Trigger price for stoploss" in str(e):
+                oip.order_type = OrderType.LIMIT
+                return self.place_order(oip)
+            else:
+                raise Exception(str(e))
+
+    def modify_order(self, order: Order, omp: OrderModifyParams, tradeQty: int):
+        logging.info("%s:%s:: Going to modify order with params %s", self.broker_name, self.short_code, omp)
+
+        if order.order_type == OrderType.SL_LIMIT and omp.newTriggerPrice == order.trigger_price:
+            logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
+            # nothing to modify
+            return order
+        elif order.order_type == OrderType.LIMIT and omp.newPrice < 0 or omp.newPrice == order.price:
+            # nothing to modify
+            logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
+            return order
+
+        kite = self.broker_name_handle
+        freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
+
+        try:
+            orderId = kite.modify_order(
+                variety=kite.VARIETY_REGULAR if tradeQty <= freeze_limit else kite.VARIETY_ICEBERG,
+                order_id=order.order_id,
+                quantity=int(omp.newQty) if omp.newQty > 0 else None,
+                price=omp.newPrice if omp.newPrice > 0 else None,
+                trigger_price=omp.newTriggerPrice if omp.newTriggerPrice > 0 else None,
+                order_type=omp.newOrderType if omp.newOrderType != None else None,
+            )
+
+            logging.info("%s:%s Order modified successfully for orderId = %s", self.broker_name, self.short_code, orderId)
+            order.update_timestamp = get_epoch()
+            return order
+        except Exception as e:
+            if "Too many requests" in str(e):
+                logging.info("%s:%s retrying order modification in 1 s for %s", self.broker_name, self.short_code, order.order_id)
+                import time
+
+                time.sleep(1)
+                self.modify_order(order, omp, tradeQty)
+            logging.info("%s:%s Order %s modify failed: %s", self.broker_name, self.short_code, order.order_id, str(e))
+            raise Exception(str(e))
+
+    def cancel_order(self, order):
+        logging.debug("%s:%s Going to cancel order %s", self.broker_name, self.short_code, order.order_id)
+        kite = self.broker_name_handle
+        freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
+        try:
+            orderId = kite.cancel_order(variety=kite.VARIETY_REGULAR if order.qty <= freeze_limit else kite.VARIETY_ICEBERG, order_id=order.order_id)
+
+            logging.info("%s:%s Order cancelled successfully, orderId = %s", self.broker_name, self.short_code, orderId)
+            order.update_timestamp = get_epoch()
+            return order
+        except Exception as e:
+            if "Too many requests" in str(e):
+                logging.info("%s:%s retrying order cancellation in 1 s for %s", self.broker_name, self.short_code, order.order_id)
+                import time
+
+                time.sleep(1)
+                self.cancel_order(order)
+            logging.info("%s:%s Order cancel failed: %s", self.broker_name, self.short_code, str(e))
+            raise Exception(str(e))
+
+    def fetch_update_all_orders(self, orders):
+        logging.debug("%s:%s Going to fetch order book", self.broker_name, self.short_code)
+        kite = self.broker_name_handle
+        orderBook = None
+        try:
+            orderBook = kite.orders()
+        except Exception as e:
+            logging.error("%s:%s Failed to fetch order book", self.broker_name, self.short_code)
+            return []
+
+        logging.debug("%s:%s Order book length = %d", self.broker_name, self.short_code, len(orderBook))
+        numOrdersUpdated = 0
+        missingOrders = []
+
+        for bOrder in orderBook:
+            foundOrder = None
+            foundChildOrder = None
+            parentOrder = None
+            for order in orders.keys():
+                if order.order_id == bOrder["order_id"]:
+                    foundOrder = order
+                if order.order_id == bOrder["parent_order_id"]:
+                    foundChildOrder = bOrder
+                    parentOrder = order
+
+            if foundOrder != None:
+                logging.debug("Found order for orderId %s", foundOrder.order_id)
+                foundOrder.qty = bOrder["quantity"]
+                foundOrder.filled_qty = bOrder["filled_quantity"]
+                foundOrder.pending_qty = bOrder["pending_quantity"]
+                foundOrder.order_status = bOrder["status"]
+                if foundOrder.order_status == OrderStatus.CANCELLED and foundOrder.filled_qty > 0:
+                    # Consider this case as completed in our system as we cancel the order with pending qty when strategy stop timestamp reaches
+                    foundOrder.order_status = OrderStatus.COMPLETE
+                foundOrder.price = bOrder["price"]
+                foundOrder.trigger_price = bOrder["trigger_price"]
+                foundOrder.average_price = bOrder["average_price"]
+                foundOrder.update_timestamp = bOrder["exchange_update_timestamp"]
+                logging.debug("%s:%s:%s Updated order %s", self.broker_name, self.short_code, orders[foundOrder], foundOrder)
+                numOrdersUpdated += 1
+            elif foundChildOrder != None:
+                oip = OrderInputParams(parentOrder.trading_symbol)
+                oip.exchange = parentOrder.exchange
+                oip.product_type = parentOrder.productType
+                oip.order_type = parentOrder.orderType
+                oip.price = parentOrder.price
+                oip.trigger_price = parentOrder.trigger_price
+                oip.qty = parentOrder.qty
+                oip.tag = parentOrder.tag
+                oip.product_type = parentOrder.productType
+                order = Order(oip)
+                order.order_id = bOrder["order_id"]
+                order.parent_order_id = parentOrder.order_id
+                order.place_timestamp = get_epoch()  # TODO should get from bOrder
+                missingOrders.append(order)
+
+        return missingOrders
+
+    def convert_to_broker_product(self, productType):
+        kite = self.broker_name_handle
+        if productType == ProductType.MIS:
+            return kite.PRODUCT_MIS
+        elif productType == ProductType.NRML:
+            return kite.PRODUCT_NRML
+        elif productType == ProductType.CNC:
+            return kite.PRODUCT_CNC
+        return None
+
+    def covert_to_broker_order(self, orderType):
+        kite = self.broker_name_handle
+        if orderType == OrderType.LIMIT:
+            return kite.ORDER_TYPE_LIMIT
+        elif orderType == OrderType.MARKET:
+            return kite.ORDER_TYPE_MARKET
+        elif orderType == OrderType.SL_MARKET:
+            return kite.ORDER_TYPE_SLM
+        elif orderType == OrderType.SL_LIMIT:
+            return kite.ORDER_TYPE_SL
+        return None
+
+    def convert_to_broker_direction(self, direction):
+        kite = self.broker_name_handle
+        if direction == Direction.LONG:
+            return kite.TRANSACTION_TYPE_BUY
+        elif direction == Direction.SHORT:
+            return kite.TRANSACTION_TYPE_SELL
+        return None
+
+    def update_order(self, order, data):
+        if order is None:
+            return
+        logging.info(data)
 
     def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
         return Quote(trading_symbol)
@@ -85,9 +278,7 @@ class Ticker(BaseTicker[Broker]):
     def __init__(self, short_code, broker):
         super().__init__(short_code, broker)
 
-    def start_ticker(
-        self,
-    ):
+    def start_ticker(self):
         ticker = KiteTicker(self.broker.broker_handle.api_key, self.broker.access_token)
         ticker.on_connect = self.on_connect
         ticker.on_close = self.on_close

@@ -2,7 +2,7 @@ import csv
 import logging
 import urllib
 from io import BytesIO, TextIOWrapper
-from typing import Dict, List
+from typing import Any, Dict, List
 from urllib.request import urlopen, urlretrieve
 from zipfile import ZipFile
 
@@ -11,14 +11,16 @@ import socketio  # type: ignore[import-untyped]
 from breeze_connect import BreezeConnect  # type: ignore[import-untyped]
 from breeze_connect import config as breeze_config
 
+import broker
 from broker import brokers, tickers
 from broker.base import Broker as Base
 from broker.base import Ticker as BaseTicker
 from config import get_system_config
 from core import Quote
 from instruments import get_instrument_data_by_symbol, get_instrument_data_by_token
-from models import TickData
+from models import Direction, OrderStatus, OrderType, TickData
 from models.order import Order, OrderInputParams, OrderModifyParams
+from utils import get_epoch
 
 
 class Broker(Base[BreezeConnect]):
@@ -50,16 +52,220 @@ class Broker(Base[BreezeConnect]):
 
         return redirect_url
 
-    def place_order(self, order_input_params: OrderInputParams) -> bool:
-        return False
+    def place_order(self, oip: OrderInputParams) -> Order:
+        logging.debug("%s:%s:: Going to place order with params %s", self.broker_name, self.short_code, oip)
+        breeze = self.broker_handle.broker
+        oip.qty = int(oip.qty)
+        import math
 
-    def modify_order(self, order: Order, order_modify_params: OrderModifyParams) -> bool:
-        return False
+        freeze_limit = 900 if oip.trading_symbol.startswith("BANK") else 1800
+        isd = get_instrument_data_by_symbol(self.short_code, oip.trading_symbol)
+        lot_size = isd["lot_size"]
+        # leg_count = max(math.ceil(orderInputParams.qty/freeze_limit), 2)
+        # slice = orderInputParams.qty / leg_count
+        # iceberg_quantity = math.ceil(slice / lot_size) * lot_size
+        # iceberg_legs = leg_count
 
-    def cancel_order(self, order: Order) -> bool:
-        return False
+        if oip.qty > freeze_limit and oip.order_type == OrderType.MARKET:
+            oip.order_type = OrderType.LIMIT
 
-    def fetch_update_all_orders(self, orders: List[Order]) -> None: ...
+        try:
+            order_id = breeze.place_order(
+                stock_code=isd["name"],
+                # variety= breeze.VARIETY_REGULAR if orderInputParams.qty<=freeze_limit else breeze.VARIETY_ICEBERG,
+                # iceberg_quantity = iceberg_quantity,
+                # tradingsymbol=orderInputParams.trading_symbol,
+                exchange_code=oip.exchange if oip.is_fno == True else breeze.EXCHANGE_NSE,
+                product=self._convert_to_broker_product(oip.trading_symbol),
+                action=self._convert_to_broker_direction(oip.direction),
+                order_type=self._covert_to_broker_order(oip.order_type),
+                quantity=oip.qty,
+                price=oip.price if oip.order_type != OrderType.MARKET else "",
+                validity="day",
+                stoploss=oip.trigger_price if oip.order_type == OrderType.SL_LIMIT else "",
+                user_remark=oip.tag[:20],
+                right=self._get_instrument_right(oip.trading_symbol),
+                strike_price=isd["strike"],
+                expiry_date=isd["expiry"],
+            )
+
+            logging.info("%s:%s:: Order placed successfully, orderId = %s with tag: %s", self.broker_name, self.short_code, order_id, oip.tag)
+            order = Order(oip)
+            order.order_id = order_id["Success"]["order_id"]
+            order.place_timestamp = get_epoch()
+            order.update_timestamp = get_epoch()
+            return order
+        except Exception as e:
+            if "Too many requests" in str(e):
+                logging.info("%s:%s retrying order placement in 1 s for %s", self.broker_name, self.short_code, order.order_id)
+                import time
+
+                time.sleep(1)
+                self.place_order(oip)
+            logging.info("%s:%s Order placement failed: %s", self.broker_name, self.short_code, str(order_id))
+            if "price cannot be" in order_id["Error"]:
+                oip.order_type = OrderType.LIMIT
+                return self.place_order(oip)
+            else:
+                raise Exception(str(e))
+
+    def modify_order(self, order: Order, omp: OrderModifyParams, tradeQty: int) -> Order:
+        logging.info("%s:%s:: Going to modify order with params %s", self.broker_name, self.short_code, omp)
+
+        if order.order_type == OrderType.SL_LIMIT and omp.newTriggerPrice == order.trigger_price:
+            logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
+            # nothing to modify
+            return order
+        elif order.order_type == OrderType.LIMIT and omp.newPrice < 0 or omp.newPrice == order.price:
+            # nothing to modify
+            logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
+            return order
+
+        breeze = self.broker_handle.broker
+        freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
+
+        try:
+            orderId = breeze.modify_order(
+                order_id=order.order_id,
+                exchange_code="NFO",
+                quantity=int(omp.newQty) if omp.newQty > 0 else None,
+                price=omp.newPrice if omp.newPrice > 0 else None,
+                stoploss=omp.newTriggerPrice if omp.newTriggerPrice > 0 and order.order_type == OrderType.SL_LIMIT else None,
+            )
+
+            logging.info("%s:%s Order modified successfully for orderId = %s", self.broker_name, self.short_code, orderId)
+            order.update_timestamp = get_epoch()
+            return order
+        except Exception as e:
+            if "Too many requests" in str(e):
+                logging.info("%s:%s retrying order modification in 1 s for %s", self.broker_name, self.short_code, order.order_id)
+                import time
+
+                time.sleep(1)
+                self.modify_order(order, omp, tradeQty)
+            logging.info("%s:%s Order %s modify failed: %s", self.broker_name, self.short_code, order.order_id, str(e))
+            raise Exception(str(e))
+
+    def cancel_order(self, order: Order) -> Order:
+        logging.debug("%s:%s Going to cancel order %s", self.broker_name, self.short_code, order.order_id)
+        breeze = self.broker_handle.broker
+        freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
+        try:
+            orderId = breeze.cancel_order(order_id=order.order_id, exchange_code="NFO")
+
+            logging.info("%s:%s Order cancelled successfully, orderId = %s", self.broker_name, self.short_code, orderId)
+            order.update_timestamp = get_epoch()
+            return order
+        except Exception as e:
+            if "Too many requests" in str(e):
+                logging.info("%s:%s retrying order cancellation in 1 s for %s", self.broker_name, self.short_code, order.order_id)
+                import time
+
+                time.sleep(1)
+                self.cancel_order(order)
+            logging.info("%s:%s Order cancel failed: %s", self.broker_name, self.short_code, str(e))
+            raise Exception(str(e))
+
+    def fetch_update_all_orders(self, orders: Dict[Order, Any]) -> List[Order]:
+        logging.debug("%s:%s Going to fetch order book", self.broker_name, self.short_code)
+        breeze = self.broker_handle
+        orderBook = None
+        try:
+            orderBook = breeze.orders()
+        except Exception as e:
+            import traceback
+
+            traceback.format_exc()
+            logging.error("%s:%s Failed to fetch order book", self.broker_name, self.short_code)
+            return []
+
+        logging.debug("%s:%s Order book length = %d", self.broker_name, self.short_code, len(orderBook))
+        numOrdersUpdated = 0
+        missingOrders = []
+
+        for bOrder in orderBook:
+            foundOrder = None
+            foundChildOrder = None
+            parentOrder = None
+            for order in orders.keys():
+                if order.order_id == bOrder["order_id"]:
+                    foundOrder = order
+                if order.order_id == bOrder["parent_order_id"]:
+                    foundChildOrder = bOrder
+                    parentOrder = order
+
+            if foundOrder != None:
+                assert foundOrder is not None
+                logging.debug("Found order for orderId %s", foundOrder.order_id)
+                foundOrder.qty = int(bOrder["quantity"])
+                foundOrder.pending_qty = int(bOrder["pending_quantity"])
+                foundOrder.filled_qty = foundOrder.qty - foundOrder.pending_qty
+
+                foundOrder.order_status = bOrder["status"]
+                if foundOrder.order_status == OrderStatus.CANCELLED and foundOrder.filled_qty > 0:
+                    # Consider this case as completed in our system as we cancel the order with pending qty when strategy stop timestamp reaches
+                    foundOrder.order_status = OrderStatus.COMPLETE
+                foundOrder.price = float(bOrder["price"])
+                foundOrder.trigger_price = float(bOrder["SLTP_price"]) if bOrder["SLTP_price"] != None else ""
+                foundOrder.average_price = float(bOrder["average_price"])
+                foundOrder.update_timestamp = bOrder["exchange_acknowledgement_date"]
+                logging.debug("%s:%s:%s Updated order %s", self.broker_name, self.short_code, orders[foundOrder], foundOrder)
+                numOrdersUpdated += 1
+            elif foundChildOrder != None:
+                assert parentOrder is not None
+                oip = OrderInputParams(parentOrder.trading_symbol)
+                oip.exchange = parentOrder.exchange
+                oip.product_type = parentOrder.productType
+                oip.order_type = parentOrder.order_type
+                oip.price = parentOrder.price
+                oip.trigger_price = parentOrder.trigger_price
+                oip.qty = parentOrder.qty
+                oip.tag = parentOrder.tag
+                oip.product_type = parentOrder.productType
+                order = Order(oip)
+                order.order_id = bOrder["order_id"]
+                order.parent_order_id = parentOrder.order_id
+                order.place_timestamp = get_epoch()  # TODO should get from bOrder
+                missingOrders.append(order)
+
+        return missingOrders
+
+    def _get_instrument_right(self, trading_symbol):
+        if trading_symbol[-2:] == "PE":
+            return "Put"
+        elif trading_symbol[-2:] == "CE":
+            return "Call"
+        return "Others"
+
+    def _convert_to_broker_product(self, trading_symbol):
+        if trading_symbol[-2:] == "PE" or trading_symbol[-2:] == "CE":
+            return "options"
+        elif "FUT" in trading_symbol:
+            return "futures"
+        return "cash"
+
+    def _covert_to_broker_order(self, order_type):
+        breeze = self.broker_handle.broker
+        if order_type == OrderType.LIMIT:
+            return "limit"
+        elif order_type == OrderType.MARKET:
+            return "market"
+        elif order_type == OrderType.SL_LIMIT:
+            return "stoploss"
+        return None
+
+    def _convert_to_broker_direction(self, direction):
+        breeze = self.broker_handle.broker
+        if direction == Direction.LONG:
+            return "buy"
+        elif direction == Direction.SHORT:
+            return "sell"
+        return None
+
+    def update_order(self, order, data) -> None:
+        if order is None:
+            return
+        logging.info(data)
 
     def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
         return Quote(trading_symbol)

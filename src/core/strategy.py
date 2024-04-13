@@ -244,15 +244,15 @@ class BaseStrategy(ABC):
         orderRejected = 0
 
         for entryOrder in trade.entry_orders:
-            if entryOrder.orderStatus == OrderStatus.CANCELLED:
+            if entryOrder.order_status == OrderStatus.CANCELLED:
                 orderCanceled += 1
 
-            if entryOrder.orderStatus == entryOrder.orderStatus == OrderStatus.REJECTED:
+            if entryOrder.order_status == entryOrder.order_status == OrderStatus.REJECTED:
                 orderRejected += 1
 
-            if entryOrder.filledQty > 0:
-                trade.entry = (trade.entry * trade.filledQty + entryOrder.averagePrice * entryOrder.filledQty) / (trade.filledQty + entryOrder.filledQty)
-            elif entryOrder.orderStatus not in [OrderStatus.REJECTED, OrderStatus.CANCELLED, None] and not entryOrder.orderType in [OrderType.SL_LIMIT]:
+            if entryOrder.filled_qty > 0:
+                trade.entry = (trade.entry * trade.filledQty + entryOrder.average_price * entryOrder.filled_qty) / (trade.filledQty + entryOrder.filled_qty)
+            elif entryOrder.order_status not in [OrderStatus.REJECTED, OrderStatus.CANCELLED, None] and not entryOrder.order_type in [OrderType.SL_LIMIT]:
                 omp = OrderModifyParams()
                 if trade.direction == Direction.LONG:
                     omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, entryOrder.price * 1.01) + 0.05
@@ -263,12 +263,12 @@ class BaseStrategy(ABC):
                 except Exception as e:
                     if e.args[0] == "Maximum allowed order modifications exceeded.":
                         self.cancelOrder(entryOrder)
-            elif entryOrder.orderStatus in [OrderStatus.TRIGGER_PENDING]:
+            elif entryOrder.order_status in [OrderStatus.TRIGGER_PENDING]:
                 nowEpoch = get_epoch()
                 if nowEpoch >= get_epoch(self.stopTimestamp):
                     self.cancelOrder(entryOrder)
 
-            trade.filledQty += entryOrder.filledQty
+            trade.filledQty += entryOrder.filled_qty
 
         if orderCanceled == len(trade.entry_orders):
             trade.tradeState = TradeState.CANCELLED
@@ -291,7 +291,7 @@ class BaseStrategy(ABC):
     async def _trackSLOrder(self, trade: Trade):
         if trade.tradeState != TradeState.ACTIVE:
             for entryOrder in trade.entry_orders:
-                if entryOrder.orderStatus in [OrderStatus.OPEN, OrderStatus.TRIGGER_PENDING]:
+                if entryOrder.order_status in [OrderStatus.OPEN, OrderStatus.TRIGGER_PENDING]:
                     return
         if trade.stopLoss == 0:
             # check if stoploss is yet to be calculated
@@ -312,15 +312,15 @@ class BaseStrategy(ABC):
             slRejected = 0
             slOpen = 0
             for slOrder in trade.slOrder:
-                if slOrder.orderStatus == OrderStatus.COMPLETE:
+                if slOrder.order_status == OrderStatus.COMPLETE:
                     slCompleted += 1
-                    slAverage = (slQuantity * slAverage + slOrder.filledQty * slOrder.averagePrice) / (slQuantity + slOrder.filledQty)
-                    slQuantity += slOrder.filledQty
-                elif slOrder.orderStatus == OrderStatus.CANCELLED:
+                    slAverage = (slQuantity * slAverage + slOrder.filled_qty * slOrder.average_price) / (slQuantity + slOrder.filled_qty)
+                    slQuantity += slOrder.filled_qty
+                elif slOrder.order_status == OrderStatus.CANCELLED:
                     slCancelled += 1
-                elif slOrder.orderStatus == OrderStatus.REJECTED:
+                elif slOrder.order_status == OrderStatus.REJECTED:
                     slRejected += 1
-                elif slOrder.orderStatus == OrderStatus.OPEN:
+                elif slOrder.order_status == OrderStatus.OPEN:
                     slOpen += 1
                     newPrice = (slOrder.price + get_cmp(self.short_code, trade.trading_symbol)) * 0.5
                     omp = OrderModifyParams()
@@ -344,7 +344,7 @@ class BaseStrategy(ABC):
             elif slCancelled == len(trade.slOrder) and len(trade.slOrder) > 0:
                 targetOrderPendingCount = 0
                 for targetOrder in trade.targetOrder:
-                    if targetOrder.orderStatus not in [OrderStatus.COMPLETE, OrderStatus.OPEN]:
+                    if targetOrder.order_status not in [OrderStatus.COMPLETE, OrderStatus.OPEN]:
                         targetOrderPendingCount += 1
                 if targetOrderPendingCount == len(trade.targetOrder):
                     # Cancel target order if exists
@@ -417,15 +417,15 @@ class BaseStrategy(ABC):
             targetCancelled = 0
             targetOpen = 0
             for targetOrder in trade.targetOrder:
-                if targetOrder.orderStatus == OrderStatus.COMPLETE:
+                if targetOrder.order_status == OrderStatus.COMPLETE:
                     targetCompleted += 1
-                    targetAverage = (targetQuantity * targetAverage + targetOrder.filledQty * targetOrder.averagePrice) / (
-                        targetQuantity + targetOrder.filledQty
+                    targetAverage = (targetQuantity * targetAverage + targetOrder.filled_qty * targetOrder.average_price) / (
+                        targetQuantity + targetOrder.filled_qty
                     )
-                    targetQuantity += targetOrder.filledQty
-                elif targetOrder.orderStatus == OrderStatus.CANCELLED:
+                    targetQuantity += targetOrder.filled_qty
+                elif targetOrder.order_status == OrderStatus.CANCELLED:
                     targetCancelled += 1
-                elif targetOrder.orderStatus == OrderStatus.OPEN and trade.exitReason is not None:
+                elif targetOrder.order_status == OrderStatus.OPEN and trade.exitReason is not None:
                     targetOpen += 1
                     omp = OrderModifyParams()
                     if trade.direction == Direction.LONG:
@@ -459,14 +459,14 @@ class BaseStrategy(ABC):
         if len(orders) == 0:
             return
         for order in orders:
-            if order.orderStatus == OrderStatus.CANCELLED:
+            if order.order_status == OrderStatus.CANCELLED:
                 continue
             try:
                 self.cancelOrder(order)
             except Exception as e:
-                logging.error("TradeManager: Failed to cancel order %s: Error => %s", order.orderId, str(e))
+                logging.error("TradeManager: Failed to cancel order %s: Error => %s", order.order_id, str(e))
                 raise (e)
-            logging.info("TradeManager: Successfully cancelled order %s", order.orderId)
+            logging.info("TradeManager: Successfully cancelled order %s", order.order_id)
 
     def cancelOrder(self, order: Order):
         pass
@@ -505,7 +505,7 @@ class BaseStrategy(ABC):
         trade.exitReason = reason
         if len(trade.entry_orders) > 0:
             for entryOrder in trade.entry_orders:
-                if entryOrder.orderStatus in [OrderStatus.OPEN, OrderStatus.TRIGGER_PENDING]:
+                if entryOrder.order_status in [OrderStatus.OPEN, OrderStatus.TRIGGER_PENDING]:
                     # Cancel entry order if it is still open (not filled or partially filled case)
                     self.cancelOrders(trade.entry_orders)
                     break
@@ -524,7 +524,7 @@ class BaseStrategy(ABC):
             # Change target order type to MARKET to exit position immediately
             logging.info("TradeManager: changing target order to closer to MARKET to exit tradeID %s", trade.tradeID)
             for targetOrder in trade.targetOrder:
-                if targetOrder.orderStatus == OrderStatus.OPEN:
+                if targetOrder.order_status == OrderStatus.OPEN:
                     omp = OrderModifyParams()
                     omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, trade.cmp * (0.99 if trade.direction == Direction.LONG else 1.01))
                     self.modifyOrder(targetOrder, omp, trade.filledQty)

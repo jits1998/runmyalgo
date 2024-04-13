@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar
 
 from core import Quote
 from models.order import Order, OrderInputParams, OrderModifyParams
@@ -17,22 +17,26 @@ class Broker(ABC, Generic[T]):
         self.user_details = user_details
         self.broker_name: str = user_details["broker_name"]
         self.access_token = None
+        self.short_code = self.user_details["short_code"]
         self.instruments_list: List[Dict[str, str]] = []
 
     @abstractmethod
     def login(self, args: Dict) -> str: ...
 
     @abstractmethod
-    def place_order(self, order_input_params: OrderInputParams) -> bool: ...
+    def place_order(self, order_input_params: OrderInputParams) -> Order: ...
 
     @abstractmethod
-    def modify_order(self, order: Order, order_modify_params: OrderModifyParams) -> bool: ...
+    def modify_order(self, order: Order, order_modify_params: OrderModifyParams, qty: int) -> Order: ...
 
     @abstractmethod
-    def cancel_order(self, order: Order) -> bool: ...
+    def cancel_order(self, order: Order) -> Order: ...
 
     @abstractmethod
-    def fetch_update_all_orders(self, orders: List[Order]) -> None: ...
+    def fetch_update_all_orders(self, orders: Dict[Order, Any]) -> List[Order]: ...
+
+    @abstractmethod
+    def update_order(self, order: Order, data) -> None: ...
 
     @abstractmethod
     def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote: ...

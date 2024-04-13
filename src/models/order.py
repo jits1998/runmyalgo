@@ -6,63 +6,62 @@ class Order:
         self.trading_symbol = orderInputParams.trading_symbol if orderInputParams != None else ""
         self.exchange = orderInputParams.exchange if orderInputParams != None else "NSE"
         self.productType = orderInputParams.productType if orderInputParams != None else ""
-        self.orderType = orderInputParams.orderType if orderInputParams != None else ""  # LIMIT/MARKET/SL-LIMIT/SL-MARKET
+        self.order_type = orderInputParams.orderType if orderInputParams != None else ""  # LIMIT/MARKET/SL-LIMIT/SL-MARKET
         self.price = orderInputParams.price if orderInputParams != None else 0
-        self.triggerPrice = orderInputParams.triggerPrice if orderInputParams != None else 0  # Applicable in case of SL orders
+        self.trigger_price = orderInputParams.triggerPrice if orderInputParams != None else 0  # Applicable in case of SL orders
         self.qty = orderInputParams.qty if orderInputParams != None else 0
         self.tag = orderInputParams.tag if orderInputParams != None else None
-        self.orderId = ""  # The order id received from broker after placing the order
-        self.orderStatus = None  # One of the status defined in ordermgmt.OrderStatus
-        self.averagePrice = 0  # Average price at which the order is filled
-        self.filledQty = 0  # Filled quantity
-        self.pendingQty = 0  # Qty - Filled quantity
-        self.orderPlaceTimestamp = None  # Timestamp when the order is placed
-        self.lastOrderUpdateTimestamp = None  # Applicable if you modify the order Ex: Trailing SL
+        self.order_id = ""  # The order id received from broker after placing the order
+        self.order_status = None  # One of the status defined in ordermgmt.OrderStatus
+        self.average_price = 0  # Average price at which the order is filled
+        self.filled_qty = 0  # Filled quantity
+        self.pending_qty = 0  # Qty - Filled quantity
+        self.place_timestamp = None  # Timestamp when the order is placed
+        self.update_timestamp = None  # Applicable if you modify the order Ex: Trailing SL
         self.message = None  # In case any order rejection or any other error save the response from broker in this field
-        self.parentOrderId = None
+        self.parent_order_id = None
 
     def __str__(self):
         return (
             "orderId="
-            + str(self.orderId)
+            + str(self.order_id)
             + ", orderStatus="
-            + str(self.orderStatus)
+            + str(self.order_status)
             + ", symbol="
             + str(self.trading_symbol)
             + ", productType="
             + str(self.productType)
             + ", orderType="
-            + str(self.orderType)
+            + str(self.order_type)
             + ", price="
             + str(self.price)
             + ", triggerPrice="
-            + str(self.triggerPrice)
+            + str(self.trigger_price)
             + ", qty="
             + str(self.qty)
             + ", filledQty="
-            + str(self.filledQty)
+            + str(self.filled_qty)
             + ", pendingQty="
-            + str(self.pendingQty)
+            + str(self.pending_qty)
             + ", averagePrice="
-            + str(self.averagePrice)
+            + str(self.average_price)
         )
 
 
 class OrderInputParams:
-    exchange: str = "NSE"  # default
-    is_fno: bool = False
-    segment: Segment = Segment.EQUITY  # default
-    product_type: ProductType = ProductType.MIS  # default
-    trading_symbol: str
-    direction: Direction
-    order_type: OrderType
-    qty: int
-    price: float
-    trigger_price: float  # Applicable in case of SL order
-    tag: str
 
-    def __init__(self, trading_symbol):
+    def __init__(self, trading_symbol: str) -> None:
         self.trading_symbol = trading_symbol
+        self.exchange: str = "NSE"  # default
+        self.is_fno: bool = False
+        self.segment: Segment = Segment.EQUITY  # default
+        self.product_type: ProductType = ProductType.MIS  # default
+        self.direction: Direction = Direction.LONG
+        self.order_type: OrderType = OrderType.LIMIT
+        self.qty: int = 0
+        self.price: float = 0.0
+        self.trigger_price: float = 0.0  # Applicable in case of SL order
+        self.tag: str = ""
 
     def __str__(self):
         return (
