@@ -20,12 +20,12 @@ class Broker(Base[KiteConnect]):
     def login(self, args: Dict) -> str:
         logging.info("==> ZerodhaLogin .args => %s", args)
         systemConfig = get_system_config()
-        self.broker_name_handle = KiteConnect(api_key=self.user_details["key"])
+        self.broker_handle = KiteConnect(api_key=self.user_details["key"])
         redirect_url = None
         if "request_token" in args:
             requestToken = args["request_token"]
             logging.info("Zerodha requestToken = %s", requestToken)
-            broker_session = self.broker_name_handle.generate_session(requestToken, api_secret=self.user_details["secret"])
+            broker_session = self.broker_handle.generate_session(requestToken, api_secret=self.user_details["secret"])
 
             if not broker_session["user_id"] == self.user_details["clientID"]:
                 raise Exception("Invalid User Credentials")
@@ -112,7 +112,7 @@ class Broker(Base[KiteConnect]):
             logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
             return order
 
-        kite = self.broker_name_handle
+        kite = self.broker_handle
         freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
 
         try:
@@ -140,7 +140,7 @@ class Broker(Base[KiteConnect]):
 
     def cancel_order(self, order):
         logging.debug("%s:%s Going to cancel order %s", self.broker_name, self.short_code, order.order_id)
-        kite = self.broker_name_handle
+        kite = self.broker_handle
         freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
         try:
             orderId = kite.cancel_order(variety=kite.VARIETY_REGULAR if order.qty <= freeze_limit else kite.VARIETY_ICEBERG, order_id=order.order_id)
@@ -160,7 +160,7 @@ class Broker(Base[KiteConnect]):
 
     def fetch_update_all_orders(self, orders):
         logging.debug("%s:%s Going to fetch order book", self.broker_name, self.short_code)
-        kite = self.broker_name_handle
+        kite = self.broker_handle
         orderBook = None
         try:
             orderBook = kite.orders()
@@ -217,7 +217,7 @@ class Broker(Base[KiteConnect]):
         return missingOrders
 
     def convert_to_broker_product(self, productType):
-        kite = self.broker_name_handle
+        kite = self.broker_handle
         if productType == ProductType.MIS:
             return kite.PRODUCT_MIS
         elif productType == ProductType.NRML:
@@ -227,7 +227,7 @@ class Broker(Base[KiteConnect]):
         return None
 
     def covert_to_broker_order(self, orderType):
-        kite = self.broker_name_handle
+        kite = self.broker_handle
         if orderType == OrderType.LIMIT:
             return kite.ORDER_TYPE_LIMIT
         elif orderType == OrderType.MARKET:
@@ -239,7 +239,7 @@ class Broker(Base[KiteConnect]):
         return None
 
     def convert_to_broker_direction(self, direction):
-        kite = self.broker_name_handle
+        kite = self.broker_handle
         if direction == Direction.LONG:
             return kite.TRANSACTION_TYPE_BUY
         elif direction == Direction.SHORT:
@@ -265,9 +265,6 @@ class Broker(Base[KiteConnect]):
 
     def orders(self) -> List:
         return []
-
-    def quote(self, key: str) -> Dict:
-        return {}
 
     def instruments(self, exchange) -> list:
         return self.broker_handle.instruments(exchange)

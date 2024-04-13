@@ -54,9 +54,6 @@ class Broker(ABC, Generic[T]):
     def orders(self) -> List: ...
 
     @abstractmethod
-    def quote(self, key: str) -> Dict: ...
-
-    @abstractmethod
     def instruments(self, exchange: str) -> List: ...
 
     def set_access_token(self, access_token: str) -> None:

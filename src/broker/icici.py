@@ -282,9 +282,6 @@ class Broker(Base[BreezeConnect]):
     def orders(self) -> List:
         return []
 
-    def quote(self, key: str) -> Dict:
-        return {}
-
     def instruments(self, exchange: str) -> List:
         # get instruments file to get tradesymbols
         trading_symbolDict = {}
