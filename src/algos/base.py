@@ -47,7 +47,6 @@ class BaseAlgo(threading.Thread, ABC):
         self.tasks: List[asyncio.Task] = []
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        self.order_queue: asyncio.Queue[Trade] = asyncio.Queue()
         self.loop.set_debug(True)
         self.questDBCursor = self.get_questdb_connection()
         self.strategies_data: Dict[str, Any] = {}
@@ -97,10 +96,6 @@ class BaseAlgo(threading.Thread, ABC):
         play_task.add_done_callback(self.handle_exception)
         self.tasks.append(play_task)
 
-        order_task = asyncio.run_coroutine_threadsafe(self.place_orders(), self.loop)
-        order_task.add_done_callback(self.handle_exception)
-        self.tasks.append(order_task)
-
         start_strategies_fut = asyncio.run_coroutine_threadsafe(self.start_strategies(self.short_code, self.multiple), self.loop)
         start_strategies_fut.add_done_callback(self.handle_exception)
         self.tasks.append(start_strategies_fut)
@@ -116,17 +111,6 @@ class BaseAlgo(threading.Thread, ABC):
                 self.questDBCursor = self.get_questdb_connection()
 
             if not is_today_holiday() and not is_market_closed_for_the_day() and not len(self.strategy_to_instance) == 0:
-                # try:
-                #     # Fetch all order details from broker and update orders in each trade
-                #     self.fetchAndUpdateAllTradeOrders()
-                #     # track each trade and take necessary action
-                #     self.trackAndUpdateAllTrades()
-
-                #     self.checkStrategyHealth()
-                #     # print ( "%s =>%f :: %f" %(datetime.now().strftime("%H:%M:%S"), pe_vega, ce_vega))
-                # except Exception as e:
-                #     traceback.print_exc()
-                #     logging.exception("Exception in TradeManager Main thread")
 
                 # save updated data to json file
                 self.save_trades_to_file()
@@ -135,24 +119,6 @@ class BaseAlgo(threading.Thread, ABC):
             now = datetime.datetime.now()
             waitSeconds = 5 - (now.second % 5)
             await asyncio.sleep(waitSeconds)
-
-    async def place_orders(self):
-        while True:
-            trade: Trade = await self.order_queue.get()  # type: ignore
-            try:
-                strategyInstance = self.strategy_to_instance[trade.strategy]
-                if strategyInstance.shouldPlaceTrade(trade):
-                    # place the longTrade
-                    isSuccess = self.execute_trade(trade)
-                    if isSuccess == True:
-                        # set longTrade state to ACTIVE
-                        trade.tradeState = TradeState.ACTIVE
-                        trade.startTimestamp = get_epoch()
-                        continue
-            except Exception as e:
-                logging.warn(str(e))
-
-            trade.tradeState = TradeState.DISABLED
 
     @abstractmethod
     async def start_strategies(self, short_code, multiple=0): ...
@@ -203,7 +169,6 @@ class BaseAlgo(threading.Thread, ABC):
     def register_strategy(self, strategy_instance):
         self.strategy_to_instance[strategy_instance.getName()] = strategy_instance
         strategy_instance.strategyData = self.strategies_data.get(strategy_instance.getName(), None)
-        strategy_instance.orderQueue = self.order_queue
 
     def dergister_strategy(self, strategy_name):
         del self.strategy_to_instance[strategy_name]

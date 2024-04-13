@@ -28,7 +28,7 @@ def exit_trade(algo: BaseAlgo, short_code, id):
     trades = algo.get_trades_by_strategy(name)
 
     for trade in trades:
-        if trade.tradeID == id:
+        if trade.trade_id == id:
             algo.strategy_to_instance[trade.strategy].square_off_trade(trade, TradeExitReason.MANUAL_EXIT)
 
     return redirect(url_for("home", short_code=short_code))

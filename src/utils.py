@@ -30,31 +30,29 @@ def get_user_details(short_code: str) -> UserDetails:
     return user_details
 
 
-def roundoff(price: float):  # Round off to 2 decimal places
+def roundoff(price: float) -> float:  # Round off to 2 decimal places
     return round(price, 2)
 
 
-def calculate_trade_pnl(trade: Trade):
+def calculate_trade_pnl(trade: Trade) -> None:
     if trade.tradeState == TradeState.ACTIVE:
         if trade.cmp > 0:
             if trade.direction == Direction.LONG:
-                trade.pnl = roundoff(trade.filledQty * (trade.cmp - trade.entry))
+                trade.pnl = roundoff(trade.filled_qty * (trade.cmp - trade.entry))
             else:
-                trade.pnl = roundoff(trade.filledQty * (trade.entry - trade.cmp))
+                trade.pnl = roundoff(trade.filled_qty * (trade.entry - trade.cmp))
     else:
         if trade.exit > 0:
             if trade.direction == Direction.LONG:
-                trade.pnl = roundoff(trade.filledQty * (trade.exit - trade.entry))
+                trade.pnl = roundoff(trade.filled_qty * (trade.exit - trade.entry))
             else:
-                trade.pnl = roundoff(trade.filledQty * (trade.entry - trade.exit))
-    tradeValue = trade.entry * trade.filledQty
+                trade.pnl = roundoff(trade.filled_qty * (trade.entry - trade.exit))
+    tradeValue = trade.entry * trade.filled_qty
     if tradeValue > 0:
         trade.pnlPercentage = roundoff(trade.pnl * 100 / tradeValue)
 
-    return trade
 
-
-def get_epoch(datetimeObj=None):
+def get_epoch(datetimeObj=None) -> int:
     # This method converts given datetimeObj to epoch seconds
     if datetimeObj == None:
         datetimeObj = datetime.now()
