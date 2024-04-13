@@ -1,17 +1,11 @@
-from time import sleep
-from typing import Optional
-
-from broker.base import BaseLogin
-
-
 class UserDetails:
     def __init__(self) -> None:
         pass
 
-    broker: str
+    broker_name: str
     key: str
     secret: str
     short_code: str
-    clientID: str
-    algoType: str
+    client_id: str
+    algo_type: str
     multiple: float

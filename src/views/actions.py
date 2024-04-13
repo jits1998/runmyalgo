@@ -2,6 +2,7 @@ import asyncio
 
 from flask import redirect, request, url_for
 
+from algos.base import BaseAlgo
 from app import flask_app as app
 from core.strategy import ManualStrategy
 from instruments import get_instrument_data_by_symbol
@@ -12,30 +13,30 @@ from views.home import get_algo, token_required
 
 @token_required
 @app.route("/me/<short_code>/strategy/exit/<name>")
-def exit_strategy(trademanager, short_code, name):
+def exit_strategy(algo: BaseAlgo, short_code: str, name: str):
 
-    trademanager.squareOffStrategy(trademanager.strategyToInstanceMap[name], TradeExitReason.MANUAL_EXIT)
+    algo.strategy_to_instance[name].square_off(TradeExitReason.MANUAL_EXIT)
 
     return redirect(url_for("home", short_code=short_code))
 
 
 @token_required
 @app.route("/me/<short_code>/trade/exit/<id>")
-def exit_trade(trademanager, short_code, id):
+def exit_trade(algo: BaseAlgo, short_code, id):
     name = id.split(":")[0]
 
-    trades = trademanager.getAllTradesByStrategy(name)
+    trades = algo.get_trades_by_strategy(name)
 
     for trade in trades:
         if trade.tradeID == id:
-            trademanager.squareOffTrade(trade, TradeExitReason.MANUAL_EXIT)
+            algo.strategy_to_instance[trade.strategy].square_off_trade(trade, TradeExitReason.MANUAL_EXIT)
 
     return redirect(url_for("home", short_code=short_code))
 
 
 @token_required
 @app.route("/me/<short_code>/trade/enter", methods=["POST"])
-def enter_trade(trademanager, short_code):
+def enter_trade(algo: BaseAlgo, short_code):
     ms = ManualStrategy.getInstance(short_code=short_code)
     ul = request.form["index"]
     strike = request.form["strike"]
@@ -62,7 +63,7 @@ def enter_trade(trademanager, short_code):
             targetPrice=target,
             placeMarketOrder=(False if trigger > 0 else True),
         ),
-        get_algo(short_code).loop,
+        algo.loop,
     )
 
     return redirect(url_for("home", short_code=short_code))
@@ -70,7 +71,7 @@ def enter_trade(trademanager, short_code):
 
 @token_required
 @app.route("/me/<short_code>/get_quote")
-def get_quote(trademanager, short_code):
+def get_quote(algo: BaseAlgo, short_code):
     ms = ManualStrategy.getInstance(short_code=short_code)
     ul = request.args["index"]
     strike = request.args["strike"]

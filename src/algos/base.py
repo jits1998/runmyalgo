@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Type
 import psycopg2
 
 import instruments
-from broker import BaseHandler, brokers
-from broker.base import BaseTicker
+from broker import tickers
+from broker.base import Broker, Ticker
 from config import get_server_config
 from core.strategy import BaseStrategy, StartTimedBaseStrategy
 from exceptions import DeRegisterStrategyException
@@ -33,7 +33,8 @@ class BaseAlgo(threading.Thread, ABC):
     access_token: str
     short_code: str
     user_details: UserDetails
-    broker_handler: BaseHandler
+    broker: Broker
+    ticker: Ticker
     loop: asyncio.AbstractEventLoop
 
     def __init__(self, group=None, target=None, name=None, args=(), kwargs=None) -> None:
@@ -62,7 +63,7 @@ class BaseAlgo(threading.Thread, ABC):
 
         logging.info("Starting Algo...")
 
-        all_instruments = instruments.fetch_instruments(self.short_code, self.broker_handler)
+        all_instruments = instruments.fetch_instruments(self.short_code, self.broker)
 
         if len(all_instruments) == 0:
             # something is wrong. We need to inform the user
@@ -78,12 +79,9 @@ class BaseAlgo(threading.Thread, ABC):
             logging.info("TradeManager: Intraday Trades Directory %s does not exist. Hence going to create.", self.intradayTradesDir)
             os.makedirs(self.intradayTradesDir)
 
-        self.order_manager = brokers[get_user_details(self.short_code).broker]["order_manager"](self.short_code, self.broker_handler)
+        self.ticker = tickers[get_user_details(self.short_code).broker_name](self.short_code, self.broker)
 
-        self.ticker = brokers[get_user_details(self.short_code).broker]["ticker"](self.short_code, self.broker_handler)
-        assert isinstance(self.ticker, BaseTicker)
-
-        self.ticker.start_ticker(get_user_details(self.short_code).key, self.access_token)
+        self.ticker.start_ticker()
         self.ticker.register_listener(self.ticker_listener)
 
         self.ticker.register_symbols(["NIFTY 50", "NIFTY BANK", "INDIA VIX", "NIFTY FIN SERVICE"])
@@ -95,11 +93,6 @@ class BaseAlgo(threading.Thread, ABC):
         while len(self.symbol_to_cmp) < 4:
             time.sleep(2)
 
-        self.status = AlgoStatus.STARTED
-
-        # tm = TradeManager(self.short_code, self.access_token, self.broker_handler)
-        # self.trade_manager = tm
-
         play_task = asyncio.run_coroutine_threadsafe(self.play(), self.loop)
         self.tasks.append(play_task)
 
@@ -108,6 +101,8 @@ class BaseAlgo(threading.Thread, ABC):
 
         start_strategies_fut = asyncio.run_coroutine_threadsafe(self.start_strategies(self.short_code, self.multiple), self.loop)
         self.tasks.append(start_strategies_fut)
+
+        self.status = AlgoStatus.STARTED
 
         logging.info("Algo started.")
 
@@ -160,32 +155,32 @@ class BaseAlgo(threading.Thread, ABC):
     async def start_strategies(self, short_code, multiple=0): ...
 
     async def start_strategy(self, strategy: Type[BaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]):
-        strategy_instance = strategy(short_code, self.broker_handler, multiple)  # type: ignore
+        strategy_instance = strategy(short_code, self.broker, multiple)  # type: ignore
         self._start_strategy(strategy_instance, run)
 
     async def start_timed_strategy(
         self, strategy: Type[StartTimedBaseStrategy], short_code, multiple, run=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], startTimestamp=None
     ):
-        strategy_instance = strategy(short_code, startTimestamp, self.broker_handler, multiple)
+        strategy_instance = strategy(short_code, startTimestamp, self.broker, multiple)
         self._start_strategy(strategy_instance, run)
 
-    def _start_strategy(self, strategy_instance, run):
+    def _start_strategy(self, strategy_instance: BaseStrategy, run):
         strategy_instance.trades = self.get_trades_by_strategy(strategy_instance.getName())
-        strategy_instance.runConfig = run
+        strategy_instance.run_config = run
 
         strategy_task = asyncio.create_task(strategy_instance.run())
         strategy_task.set_name(strategy_instance.getName())
         strategy_task.add_done_callback(self.handle_exception)
 
         self.tasks.append(strategy_task)
-        self.trade_manager.register_strategy(strategy_instance)
+        self.register_strategy(strategy_instance)
 
     def handle_exception(self, task):
         if task.exception() is not None:
             logging.info("Exception in %s", task.get_name())
             logging.info(task.exception())
             if isinstance(task.exception(), DeRegisterStrategyException):
-                self.trade_manager.dergister_strategy(task.get_name())
+                self.dergister_strategy(task.get_name())
                 pass
 
     def ticker_listener(self, tick):
@@ -195,12 +190,20 @@ class BaseAlgo(threading.Thread, ABC):
         if tick.exchange_timestamp:
             self.symbol_to_cmp["exchange_timestamp"] = tick.exchange_timestamp
 
-    def get_trades_by_strategy(self, strategy: str):
+    def get_trades_by_strategy(self, strategy: str) -> List[Trade]:
         tradesByStrategy = []
         for trade in self.trades:
             if trade.strategy == strategy:
                 tradesByStrategy.append(trade)
         return tradesByStrategy
+
+    def register_strategy(self, strategy_instance):
+        self.strategy_to_instance[strategy_instance.getName()] = strategy_instance
+        strategy_instance.strategyData = self.strategies_data.get(strategy_instance.getName(), None)
+        strategy_instance.orderQueue = self.order_queue
+
+    def dergister_strategy(self, strategy_name):
+        del self.strategy_to_instance[strategy_name]
 
     def get_questdb_connection(self):
         try:
@@ -253,13 +256,13 @@ class BaseAlgo(threading.Thread, ABC):
 
     def get_trades_filepath(self):
         tradesFilepath = os.path.join(
-            self.intradayTradesDir, get_user_details(self.short_code).broker + "_" + get_user_details(self.short_code).clientID + ".json"
+            self.intradayTradesDir, get_user_details(self.short_code).broker_name + "_" + get_user_details(self.short_code).client_id + ".json"
         )
         return tradesFilepath
 
     def get_strategies_filepath(self):
         tradesFilepath = os.path.join(
-            self.intradayTradesDir, get_user_details(self.short_code).broker + "_" + get_user_details(self.short_code).clientID + "_strategies.json"
+            self.intradayTradesDir, get_user_details(self.short_code).broker_name + "_" + get_user_details(self.short_code).client_id + "_strategies.json"
         )
         return tradesFilepath
 

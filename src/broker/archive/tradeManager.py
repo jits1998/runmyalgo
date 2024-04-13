@@ -37,7 +37,7 @@ class TradeManager:
     symbol_to_cmp: Dict[str, float] = {}
     ticker: BaseTicker
 
-    def __init__(self, short_code: str, access_token: str, broker_handler: BaseHandler) -> None:
+    def __init__(self, short_code: str, access_token: str, broker_handle: BaseHandler) -> None:
         self.short_code = short_code
         self.access_token = access_token
         self.symbol_to_cmp = cmp[short_code]
@@ -54,9 +54,9 @@ class TradeManager:
             logging.info("TradeManager: Intraday Trades Directory %s does not exist. Hence going to create.", self.intradayTradesDir)
             os.makedirs(self.intradayTradesDir)
 
-        self.order_manager = brokers[get_user_details(short_code).broker]["order_manager"](short_code, broker_handler)
+        self.order_manager = brokers[get_user_details(short_code).broker_name]["order_manager"](short_code, broker_handle)
 
-        self.ticker = brokers[get_user_details(short_code).broker]["ticker"](short_code, broker_handler)
+        self.ticker = brokers[get_user_details(short_code).broker_name]["ticker"](short_code, broker_handle)
 
         self.ticker.start_ticker(get_user_details(short_code).key, self.access_token)
         self.ticker.register_listener(self.ticker_listener)
@@ -188,13 +188,13 @@ class TradeManager:
 
     def get_trades_filepath(self):
         tradesFilepath = os.path.join(
-            self.intradayTradesDir, get_user_details(self.short_code).broker + "_" + get_user_details(self.short_code).clientID + ".json"
+            self.intradayTradesDir, get_user_details(self.short_code).broker_name + "_" + get_user_details(self.short_code).client_id + ".json"
         )
         return tradesFilepath
 
     def get_strategies_filepath(self):
         tradesFilepath = os.path.join(
-            self.intradayTradesDir, get_user_details(self.short_code).broker + "_" + get_user_details(self.short_code).clientID + "_strategies.json"
+            self.intradayTradesDir, get_user_details(self.short_code).broker_name + "_" + get_user_details(self.short_code).client_id + "_strategies.json"
         )
         return tradesFilepath
 

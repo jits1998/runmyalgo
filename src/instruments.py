@@ -4,7 +4,7 @@ import math
 import os
 from typing import Dict
 
-from broker.base import BaseHandler
+from broker.base import Broker
 from config import get_server_config
 from utils import get_epoch
 
@@ -77,14 +77,14 @@ def save_instruments(short_code, instruments=[]):
     update_last_saved(short_code)
 
 
-def fetch_instruments_from_server(short_code, broker_handler: BaseHandler):
+def fetch_instruments_from_server(short_code, broker: Broker):
     instruments_list = []
     try:
         logging.info("Going to fetch instruments from server...")
-        instruments_list = broker_handler.instruments("NSE")
-        fno_instruments = broker_handler.instruments("NFO")
-        bse_intruments = broker_handler.instruments("BSE")
-        bfo_instruments = broker_handler.instruments("BFO")
+        instruments_list = broker.instruments("NSE")
+        fno_instruments = broker.instruments("NFO")
+        bse_intruments = broker.instruments("BSE")
+        bfo_instruments = broker.instruments("BFO")
         # Add FnO instrument list to the main list
         instruments_list.extend(fno_instruments)
         instruments_list.extend(bse_intruments)
@@ -96,14 +96,14 @@ def fetch_instruments_from_server(short_code, broker_handler: BaseHandler):
     return instruments_list
 
 
-def fetch_instruments(short_code, broker_handler: BaseHandler):
+def fetch_instruments(short_code, broker: Broker):
     symbol_to_CMP[short_code] = {}
     if short_code in instruments_data:
         return instruments_data[short_code]
 
     instruments_list = load_instruments(short_code)
     if len(instruments_list) == 0 or should_fetch_from_server(short_code) == True:
-        instruments_list = fetch_instruments_from_server(short_code, broker_handler)
+        instruments_list = fetch_instruments_from_server(short_code, broker)
         # Save instruments to file locally
         if len(instruments_list) > 0:
             save_instruments(short_code, instruments_list)
@@ -115,7 +115,7 @@ def fetch_instruments(short_code, broker_handler: BaseHandler):
 
     symbol_to_instrument[short_code] = {}
     token_to_instrument[short_code] = {}
-    broker_handler.instruments_list = instruments_list
+    broker.instruments_list = instruments_list
 
     try:
         for isd in instruments_list:
@@ -138,11 +138,6 @@ def get_instrument_data_by_symbol(short_code, trading_symbol):
 
 def get_instrument_data_by_token(short_code, instrument_token):
     return token_to_instrument[short_code][instrument_token]
-
-
-def get_quote(handler: BaseHandler, trading_symbol: str, short_code: str, isFnO: bool, exchange: str):
-    handler.broker.get_quote(trading_symbol, short_code, isFnO, exchange)
-    pass
 
 
 def round_to_ticksize(short_code: str, trading_symbol: str, price: float) -> float:

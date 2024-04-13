@@ -16,7 +16,7 @@ class ZerodhaLogin(BaseLogin):
         logging.info("==> ZerodhaLogin .args => %s", args)
         systemConfig = get_system_config()
         broker_handle = KiteConnect(api_key=self.user_details["key"])
-        self.set_broker_handler(Handler(broker_handle, self.user_details))
+        self.set_broker_handle(Handler(broker_handle, self.user_details))
         redirectUrl = None
         if "request_token" in args:
             requestToken = args["request_token"]

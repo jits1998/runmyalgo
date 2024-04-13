@@ -14,9 +14,9 @@ def get_system_config() -> Dict[str, str]:
 
 
 def get_user_config(short_code: str) -> Dict[str, str]:
-    with open("../user_config/{short_code}.json".format(short_code=short_code), "r") as brokerapp:
-        user_data = json.load(brokerapp)
-        return user_data
+    with open("../user_config/{short_code}.json".format(short_code=short_code), "r") as user_data:
+        user_config = json.load(user_data)
+        return user_config
 
 
 @functools.lru_cache

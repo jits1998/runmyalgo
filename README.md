@@ -13,7 +13,7 @@
   "appKey": "",
   "appSecret": "",
   "multiple": "1",
-  "algoType" : "TestAlgo"
+  "algo_type" : "TestAlgo"
 }
 ```
 

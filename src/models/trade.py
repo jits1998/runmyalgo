@@ -8,14 +8,13 @@ from models.order import Order
 
 
 class Trade:
-    direction: Direction
 
     def __init__(self, trading_symbol=None, strategy="") -> None:
         self.exchange = "NSE"
         self.tradeID = ((strategy + ":") if not strategy == "" else "") + str(uuid.uuid4())  # Unique ID for each trade
         self.trading_symbol = trading_symbol
         self.strategy = strategy
-        self.direction
+        self.direction = Direction.LONG
         self.productType = ProductType.MIS
         self.is_futures = False  # Futures trade
         self.isOptions = False  # Options trade

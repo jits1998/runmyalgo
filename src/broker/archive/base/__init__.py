@@ -26,9 +26,6 @@ class BaseHandler(Generic[T]):
     def orders(self) -> List: ...
 
     @abstractmethod
-    def quote(self, key: str) -> Dict: ...
-
-    @abstractmethod
     def instruments(self, exchange: str) -> List: ...
 
     def getBrokerHandle(self) -> T:
@@ -44,25 +41,25 @@ class BaseHandler(Generic[T]):
 class BaseLogin(ABC):
 
     access_token: Optional[str]
-    broker_handler: Optional[BaseHandler]
+    broker_handle: Optional[BaseHandler]
 
     def __init__(self, user_details: Dict[str, str]) -> None:
         self.user_details = user_details
         self.broker: str = user_details["broker"]
         self.access_token = None
-        self.broker_handler = None
+        self.broker_handle = None
 
     # Derived class should implement login function and return redirect url
     @abstractmethod
     def login(self, args: Dict) -> str: ...
 
-    def set_broker_handler(self, broker_handle: BaseHandler) -> None:
-        self.broker_handler = broker_handle
+    def set_broker_handle(self, broker_handle: BaseHandler) -> None:
+        self.broker_handle = broker_handle
 
     def set_access_token(self, access_token: str) -> None:
         self.access_token = access_token
-        assert self.broker_handler is not None
-        self.broker_handler.set_access_token(access_token)
+        assert self.broker_handle is not None
+        self.broker_handle.set_access_token(access_token)
 
     def get_user_details(self) -> Dict[str, str]:
         return self.user_details
@@ -70,8 +67,8 @@ class BaseLogin(ABC):
     def get_access_token(self) -> Optional[str]:
         return self.access_token
 
-    def get_broker_handler(self) -> Optional[BaseHandler]:
-        return self.broker_handler
+    def get_broker_handle(self) -> Optional[BaseHandler]:
+        return self.broker_handle
 
 
 class BaseOrderManager(ABC):
@@ -94,10 +91,10 @@ class BaseOrderManager(ABC):
 
 
 class BaseTicker(ABC):
-    def __init__(self, short_code: str, broker_handler: BaseHandler) -> None:
+    def __init__(self, short_code: str, broker_handle: BaseHandler) -> None:
         self.short_code: str = short_code
         self.broker: str
-        self.broker_handler: BaseHandler = broker_handler
+        self.broker_handle: BaseHandler = broker_handle
         self.ticker = None
         self.tickListeners: List[Callable] = []
 

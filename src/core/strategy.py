@@ -8,7 +8,7 @@ from datetime import datetime
 from math import ceil
 from typing import Dict, List, Optional
 
-from broker.base import BaseHandler
+from broker.base import Broker
 from core import Quote
 from exceptions import DeRegisterStrategyException, DisableTradeException
 from instruments import get_cmp, get_instrument_data_by_symbol, round_to_ticksize
@@ -39,13 +39,13 @@ from utils import (
 
 class BaseStrategy(ABC):
 
-    def __init__(self, name: str, short_code: str, handler: BaseHandler, multiple: int = 0) -> None:  # type: ignore
+    def __init__(self, name: str, short_code: str, broker: Broker, multiple: int = 0) -> None:  # type: ignore
         # NOTE: All the below properties should be set by the Derived Class (Specific to each strategy)
         self.name = name  # strategy name
         self.short_code = short_code
         self.orderQueue: asyncio.Queue[Trade]
         self.strategyData: Dict[str, str] = {}
-        self.handler = handler
+        self.broker = broker
         self.enabled = True  # Strategy will be run only when it is enabled
         self.productType = ProductType.MIS  # MIS/NRML/CNC etc
         self.symbols: List[str] = []  # List of stocks to be traded under this strategy
@@ -66,6 +66,7 @@ class BaseStrategy(ABC):
         self.multiple = multiple
         self.exchange = "NFO"
         self.equityExchange = "NSE"
+        self.run_config = [0, -1, -1, -1, -1, -1, 0, 0, 0, 0]
 
     def getName(self) -> str:
         return self.name
@@ -153,7 +154,7 @@ class BaseStrategy(ABC):
 
         self.fromDict(self.strategyData)
 
-        if self.strategyData is None:  # Enabled status, SLs and target may have been adjusted
+        if self.strategyData is None or len(self.strategyData) == 0:  # Enabled status, SLs and target may have been adjusted
 
             # NOTE: This should not be overriden in Derived class
             if self.enabled == False:
@@ -228,7 +229,7 @@ class BaseStrategy(ABC):
                     nowEpoch = get_epoch()
                     if nowEpoch >= trade.intradaySquareOffTimestamp:
                         trade.target = get_cmp(self.short_code, trade.trading_symbol)
-                        self.squareOffTrade(trade, TradeExitReason.SQUARE_OFF)
+                        self.square_off_trade(trade, TradeExitReason.SQUARE_OFF)
 
     def _trackEntryOrder(self, trade: Trade):
         if trade.tradeState != TradeState.ACTIVE:
@@ -280,7 +281,7 @@ class BaseStrategy(ABC):
             for trade in strategy.trades:
                 if trade.tradeState in [TradeState.ACTIVE]:
                     trade.target = get_cmp(self.short_code, trade.trading_symbol)
-                    self.squareOffTrade(trade, TradeExitReason.TRADE_FAILED)
+                    self.square_off_trade(trade, TradeExitReason.TRADE_FAILED)
                 strategy.setDisabled()
 
         # Update the current market price and calculate pnl
@@ -359,7 +360,7 @@ class BaseStrategy(ABC):
                 for trade in strategy.trades:
                     if trade.tradeState in [TradeState.ACTIVE]:
                         trade.target = get_cmp(self.short_code, trade.trading_symbol)
-                        self.squareOffTrade(trade, TradeExitReason.TRADE_FAILED)
+                        self.square_off_trade(trade, TradeExitReason.TRADE_FAILED)
                     strategy.setDisabled()
             elif slOpen > 0:
                 pass  # handled above, skip calling trail SL
@@ -377,13 +378,13 @@ class BaseStrategy(ABC):
                     updateSL = True
                 else:
                     logging.info("TradeManager: Trail SL %f triggered Squareoff at market for tradeID %s", newTrailSL, trade.tradeID)
-                    self.squareOffTrade(trade, reason=TradeExitReason.SL_HIT)
+                    self.square_off_trade(trade, reason=TradeExitReason.SL_HIT)
             elif trade.direction == Direction.SHORT and newTrailSL < trade.stopLoss:
                 if newTrailSL > trade.cmp:
                     updateSL = True
                 else:  # in case the SL is called due to all leg squareoff
                     logging.info("TradeManager: Trail SL %f triggered Squareoff at market for tradeID %s", newTrailSL, trade.tradeID)
-                    self.squareOffTrade(trade, reason=TradeExitReason.SL_HIT)
+                    self.square_off_trade(trade, reason=TradeExitReason.SL_HIT)
         if updateSL == True:
             omp = OrderModifyParams()
             omp.newTriggerPrice = newTrailSL
@@ -489,7 +490,14 @@ class BaseStrategy(ABC):
 
         trade = calculate_trade_pnl(trade)
 
-    def squareOffTrade(self, trade: Trade, reason=TradeExitReason.SQUARE_OFF):
+    def square_off(self, reason=TradeExitReason.SQUARE_OFF) -> None:
+        for trade in self.trades:
+            if trade.tradeState in [TradeState.ACTIVE]:
+                trade.target = get_cmp(self.short_code, trade.trading_symbol)
+                self.square_off_trade(trade, reason)
+        self.setDisabled()
+
+    def square_off_trade(self, trade: Trade, reason=TradeExitReason.SQUARE_OFF):
         logging.info("TradeManager: squareOffTrade called for tradeID %s with reason %s", trade.tradeID, reason)
         if trade == None or trade.tradeState != TradeState.ACTIVE:
             return
@@ -548,7 +556,7 @@ class BaseStrategy(ABC):
 
     def get_quote(self, trading_symbol):
         try:
-            return self.handler.get_quote(trading_symbol, self.short_code, self.isFnO, self.exchange)
+            return self.broker.get_quote(trading_symbol, self.short_code, self.isFnO, self.exchange)
         except KeyError as e:
             logging.info("%s::%s: Could not get Quote for %s => %s", self.short_code, self.getName(), trading_symbol, str(e))
         except Exception as exp:
@@ -781,13 +789,13 @@ class BaseStrategy(ABC):
         return dict
 
     def fromDict(self, dict):
-        if not dict is None:
+        if not dict is None and len(dict) > 0:
             self.enabled = dict["enabled"]
             self.strategySL = dict["strategySL"]
             self.strategyTarget = dict["strategyTarget"]
 
     def _getLots(self, strategyName, symbol, expiryDay):
-        strategyLots = self.runConfig
+        strategyLots = self.run_config
         if is_today_weekly_expiry(symbol, expiryDay):
             return strategyLots[0]
         noOfDaysBeforeExpiry = find_days_before_weekly_expiry(symbol, expiryDay)
@@ -804,7 +812,7 @@ class BaseStrategy(ABC):
 class StartTimedBaseStrategy(BaseStrategy):
 
     # DO NOT call the base constructor, as it will override the start time and register with trademanager with overridden timestamp
-    def __init__(self, name, short_code, startTime, handler: BaseHandler, multiple=0) -> None:
+    def __init__(self, name, short_code, startTime, handler: Broker, multiple=0) -> None:
         self.name = name  # strategy name
         self.short_code = short_code
         self.handler = handler
@@ -841,7 +849,7 @@ class ManualStrategy(BaseStrategy):
             ManualStrategy(short_code)
         return ManualStrategy.__instance[short_code]
 
-    def __init__(self, short_code: str, handler: BaseHandler, multiple: int = 0):
+    def __init__(self, short_code: str, handler: Broker, multiple: int = 0):
 
         if ManualStrategy.__instance.get(short_code, None) != None:
             raise Exception("This class is a singleton!")
@@ -873,7 +881,7 @@ class TestStrategy(BaseStrategy):
             TestStrategy()
         return TestStrategy.__instance[short_code]
 
-    def __init__(self, short_code: str, handler: BaseHandler, multiple: int = 0):
+    def __init__(self, short_code: str, handler: Broker, multiple: int = 0):
         if TestStrategy.__instance.get(short_code, None) != None:
             raise Exception("This class is a singleton!")
         else:
@@ -917,7 +925,7 @@ class TestStrategy(BaseStrategy):
             return
         indexSymbol = "NIFTY 50"
         # Get current market price of Nifty Future
-        quote = self.handler.get_index_quote(indexSymbol, self.short_code)
+        quote = self.broker.get_index_quote(indexSymbol, self.short_code)
         if quote == None:
             logging.error("%s: Could not get quote for %s", self.getName(), indexSymbol)
             return

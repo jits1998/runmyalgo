@@ -16,16 +16,16 @@ dateTimeFormat = "%Y-%m-%d %H:%M:%S"
 
 @functools.lru_cache
 def get_user_details(short_code: str) -> UserDetails:
-    userConfig: dict = get_user_config(short_code)
+    user_config: dict = get_user_config(short_code)
 
     user_details = UserDetails()
     user_details.short_code = short_code
-    user_details.broker = userConfig["broker"]
-    user_details.clientID = userConfig["clientID"]
-    user_details.secret = userConfig["appSecret"]
-    user_details.key = userConfig["appKey"]
-    user_details.multiple = int(userConfig["multiple"])
-    user_details.algoType = userConfig["algoType"]
+    user_details.broker_name = user_config["broker"]
+    user_details.client_id = user_config["clientID"]
+    user_details.secret = user_config["appSecret"]
+    user_details.key = user_config["appKey"]
+    user_details.multiple = int(user_config["multiple"])
+    user_details.algo_type = user_config["algo_type"]
 
     return user_details
 

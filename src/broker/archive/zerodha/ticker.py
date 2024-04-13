@@ -9,8 +9,8 @@ from models import TickData
 
 
 class ZerodhaTicker(BaseTicker):
-    def __init__(self, short_code, broker_handler):
-        super().__init__(short_code, broker_handler)
+    def __init__(self, short_code, broker_handle):
+        super().__init__(short_code, broker_handle)
 
     def start_ticker(self, appKey, access_token):
         if access_token == None:

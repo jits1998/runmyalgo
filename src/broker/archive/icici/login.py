@@ -17,7 +17,7 @@ class ICICILogin(BaseLogin):
         logging.info("==> ICICILogin .args => %s", args)
         system_config = get_system_config()
         broker_handle = BreezeConnect(api_key=self.user_details["key"])
-        self.set_broker_handler(Handler(broker_handle, self.user_details))
+        self.set_broker_handle(Handler(broker_handle, self.user_details))
         redirect_url = None
         if "apisession" in args:
 
