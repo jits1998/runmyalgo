@@ -1,5 +1,6 @@
 import csv
 import logging
+import time
 import urllib
 from io import BytesIO, TextIOWrapper
 from typing import Any, Dict, List
@@ -7,6 +8,7 @@ from urllib.request import urlopen, urlretrieve
 from zipfile import ZipFile
 
 import dateutil.parser
+import requests
 import socketio  # type: ignore[import-untyped]
 from breeze_connect import BreezeConnect  # type: ignore[import-untyped]
 from breeze_connect import config as breeze_config
@@ -54,7 +56,7 @@ class Broker(Base[BreezeConnect]):
 
     def place_order(self, oip: OrderInputParams) -> Order:
         logging.debug("%s:%s:: Going to place order with params %s", self.broker_name, self.short_code, oip)
-        breeze = self.broker_handle.broker
+        breeze = self.broker_handle
         oip.qty = int(oip.qty)
         import math
 
@@ -121,7 +123,7 @@ class Broker(Base[BreezeConnect]):
             logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
             return order
 
-        breeze = self.broker_handle.broker
+        breeze = self.broker_handle
         freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
 
         try:
@@ -148,7 +150,7 @@ class Broker(Base[BreezeConnect]):
 
     def cancel_order(self, order: Order) -> Order:
         logging.debug("%s:%s Going to cancel order %s", self.broker_name, self.short_code, order.order_id)
-        breeze = self.broker_handle.broker
+        breeze = self.broker_handle
         freeze_limit = 900 if order.trading_symbol.startswith("BANK") else 1800
         try:
             orderId = breeze.cancel_order(order_id=order.order_id, exchange_code="NFO")
@@ -245,7 +247,7 @@ class Broker(Base[BreezeConnect]):
         return "cash"
 
     def _covert_to_broker_order(self, order_type):
-        breeze = self.broker_handle.broker
+        breeze = self.broker_handle
         if order_type == OrderType.LIMIT:
             return "limit"
         elif order_type == OrderType.MARKET:
@@ -255,7 +257,6 @@ class Broker(Base[BreezeConnect]):
         return None
 
     def _convert_to_broker_direction(self, direction):
-        breeze = self.broker_handle.broker
         if direction == Direction.LONG:
             return "buy"
         elif direction == Direction.SHORT:
@@ -268,10 +269,83 @@ class Broker(Base[BreezeConnect]):
         logging.info(data)
 
     def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
-        return Quote(trading_symbol)
+        isd = get_instrument_data_by_symbol(short_code, trading_symbol)
+        bQuote = self._quote(isd)
+        quote = Quote(trading_symbol)
+        quote.trading_symbol = trading_symbol
+        quote.lastTradedPrice = bQuote["ltp"]
+        quote.lastTradedQuantity = 0
+        quote.avgTradedPrice = 0
+        quote.volume = bQuote["total_quantity_traded"]
+        quote.totalBuyQuantity = 0
+        quote.totalSellQuantity = 0
+        quote.open = bQuote["open"]
+        quote.high = bQuote["high"]
+        quote.low = bQuote["low"]
+        quote.close = bQuote["previous_close"]
+        quote.change = 0
+        quote.oiDayHigh = 0
+        quote.oiDayLow = 0
+        quote.oi = 0
+        quote.lowerCiruitLimit = bQuote["lower_circuit"]
+        quote.upperCircuitLimit = bQuote["upper_circuit"]
 
-    def get_index_quote(self, trading_symbol: str, short_code: str, exchange: str = "NSE") -> Quote:
-        return Quote(trading_symbol)
+        return quote
+
+    def get_index_quote(self, trading_symbol, short_code, exchange="NSE"):
+        isd = get_instrument_data_by_symbol(short_code, trading_symbol)
+        bQuote = self._quote(isd)
+        quote = Quote(trading_symbol)
+        quote.trading_symbol = trading_symbol
+        quote.lastTradedPrice = bQuote["ltp"]
+        quote.lastTradedQuantity = 0
+        quote.avgTradedPrice = 0
+        quote.volume = bQuote["total_quantity_traded"]
+        quote.totalBuyQuantity = 0
+        quote.totalSellQuantity = 0
+        quote.open = bQuote["open"]
+        quote.high = bQuote["high"]
+        quote.low = bQuote["low"]
+        quote.close = bQuote["previous_close"]
+        quote.change = 0
+        quote.oiDayHigh = 0
+        quote.oiDayLow = 0
+        quote.oi = 0
+        quote.lowerCiruitLimit = bQuote["lower_circuit"]
+        quote.upperCircuitLimit = bQuote["upper_circuit"]
+
+        return quote
+
+    def _quote(self, isd):
+        product_type = ""
+        right = ""
+        retry = False
+        if isd["instrument_type"] == "PE":
+            product_type = "options"
+            right = "PUT"
+        elif isd["instrument_type"] == "CE":
+            product_type = "options"
+            right = "CALL"
+        elif isd["expiry"] != "":
+            product_type = "futures"
+            right = "Others"
+
+        try:
+            return self.broker_handle.get_quotes(
+                stock_code=isd["name"],
+                exchange_code=isd["exchange"],
+                expiry_date=isd["expiry"],
+                product_type=product_type,
+                right=right,
+                strike_price=isd["strike"],
+            )["Success"][0]
+        except requests.exceptions.HttpError as e:
+            if e.response.status_code == 503:
+                retry = True
+        if retry:
+            time.sleep(1)
+            logging.info("retrying get_quote after 1 s for %s", isd["name"])
+            return self._quote(isd)
 
     def margins(self) -> List:
         return []
