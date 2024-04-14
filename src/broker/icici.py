@@ -1,4 +1,5 @@
 import csv
+import datetime
 import logging
 import time
 import urllib
@@ -13,7 +14,6 @@ import socketio  # type: ignore[import-untyped]
 from breeze_connect import BreezeConnect  # type: ignore[import-untyped]
 from breeze_connect import config as breeze_config
 
-import broker
 from broker import brokers, tickers
 from broker.base import Broker as Base
 from broker.base import Ticker as BaseTicker
@@ -263,9 +263,7 @@ class Broker(Base[BreezeConnect]):
             return "sell"
         return None
 
-    def update_order(self, order, data) -> None:
-        if order is None:
-            return
+    def handle_order_update_tick(self, data) -> None:
         logging.info(data)
 
     def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
@@ -273,22 +271,22 @@ class Broker(Base[BreezeConnect]):
         bQuote = self._quote(isd)
         quote = Quote(trading_symbol)
         quote.trading_symbol = trading_symbol
-        quote.lastTradedPrice = bQuote["ltp"]
-        quote.lastTradedQuantity = 0
-        quote.avgTradedPrice = 0
+        quote.last_traded_price = bQuote["ltp"]
+        quote.last_traded_quantity = 0
+        quote.avg_traded_price = 0
         quote.volume = bQuote["total_quantity_traded"]
-        quote.totalBuyQuantity = 0
-        quote.totalSellQuantity = 0
+        quote.total_buy_quantity = 0
+        quote.total_sell_quantity = 0
         quote.open = bQuote["open"]
         quote.high = bQuote["high"]
         quote.low = bQuote["low"]
         quote.close = bQuote["previous_close"]
         quote.change = 0
-        quote.oiDayHigh = 0
-        quote.oiDayLow = 0
+        quote.oi_day_high = 0
+        quote.oi_day_low = 0
         quote.oi = 0
-        quote.lowerCiruitLimit = bQuote["lower_circuit"]
-        quote.upperCircuitLimit = bQuote["upper_circuit"]
+        quote.lower_ciruit_limit = bQuote["lower_circuit"]
+        quote.upper_circuit_limit = bQuote["upper_circuit"]
 
         return quote
 
@@ -297,22 +295,22 @@ class Broker(Base[BreezeConnect]):
         bQuote = self._quote(isd)
         quote = Quote(trading_symbol)
         quote.trading_symbol = trading_symbol
-        quote.lastTradedPrice = bQuote["ltp"]
-        quote.lastTradedQuantity = 0
-        quote.avgTradedPrice = 0
+        quote.last_traded_price = bQuote["ltp"]
+        quote.last_traded_quantity = 0
+        quote.avg_traded_price = 0
         quote.volume = bQuote["total_quantity_traded"]
-        quote.totalBuyQuantity = 0
-        quote.totalSellQuantity = 0
+        quote.total_buy_quantity = 0
+        quote.total_sell_quantity = 0
         quote.open = bQuote["open"]
         quote.high = bQuote["high"]
         quote.low = bQuote["low"]
         quote.close = bQuote["previous_close"]
         quote.change = 0
-        quote.oiDayHigh = 0
-        quote.oiDayLow = 0
+        quote.oi_day_high = 0
+        quote.oi_day_low = 0
         quote.oi = 0
-        quote.lowerCiruitLimit = bQuote["lower_circuit"]
-        quote.upperCircuitLimit = bQuote["upper_circuit"]
+        quote.lower_ciruit_limit = bQuote["lower_circuit"]
+        quote.upper_circuit_limit = bQuote["upper_circuit"]
 
         return quote
 
@@ -354,7 +352,29 @@ class Broker(Base[BreezeConnect]):
         return []
 
     def orders(self) -> List:
-        return []
+        order_list = self.broker_handle.get_order_list(
+            exchange_code="NFO",
+            from_date=datetime.datetime.now().isoformat()[:10] + "T05:30:00.000Z",
+            to_date=datetime.datetime.now().isoformat()[:10] + "T05:30:00.000Z",
+        )["Success"]
+
+        if order_list == None:
+            return []
+        else:
+            for order in order_list:
+                if order["status"] == "Executed":
+                    order["status"] = OrderStatus.COMPLETE
+                order["tradingsymbol"] = [
+                    x
+                    for x in self.instruments_list
+                    if x["name"] == order["stock_code"]
+                    and x["strike"] == str(order["strike_price"]).split(".")[0]
+                    and x["expiry"] == order["expiry_date"]
+                    and x["instrument_type"] == ("PE" if order["right"] == "Put" else "CE")
+                ][0]["tradingsymbol"]
+                order["tag"] = order["user_remark"]
+                order["transaction_type"] = order["action"]
+        return order_list
 
     def instruments(self, exchange: str) -> List:
         # get instruments file to get tradesymbols
@@ -468,30 +488,35 @@ class Ticker(BaseTicker[Broker]):
         try:
 
             self.ticker.ws_connect()
+            self.ticker.subscribe_feeds(get_order_notification=True)
 
             def on_ticks(bTick):
-                logging.debug(bTick["symbol"] + " => " + str(bTick["last"]))
-                # convert broker specific Ticks to our system specific Ticks (models.TickData) and pass to super class function
-                ticks = []
-                isd = get_instrument_data_by_token(self.short_code, bTick["symbol"][4:])
-                trading_symbol = isd["tradingsymbol"]
-                tick = TickData(trading_symbol)
-                tick.lastTradedPrice = bTick["last"]
-                if not isd["segment"] == "INDICES":
-                    tick.lastTradedQuantity = bTick["ltq"]
-                    tick.avgTradedPrice = bTick["avgPrice"]
-                    tick.volume = bTick["ttq"]
-                    tick.totalBuyQuantity = bTick["totalBuyQt"]
-                    tick.totalSellQuantity = bTick["totalSellQ"]
-                # else:
-                #   tick.exchange_timestamp = bTick['exchange_timestamp']
-                tick.open = bTick["open"]
-                tick.high = bTick["high"]
-                tick.low = bTick["low"]
-                tick.close = bTick["close"]
-                tick.change = bTick["change"]
-                ticks.append(tick)
-                self.on_new_ticks(ticks)
+                if "symbol" in bTick:
+
+                    logging.debug(bTick["symbol"] + " => " + str(bTick["last"]))
+                    # convert broker specific Ticks to our system specific Ticks (models.TickData) and pass to super class function
+                    ticks = []
+                    isd = get_instrument_data_by_token(self.short_code, bTick["symbol"][4:])
+                    trading_symbol = isd["tradingsymbol"]
+                    tick = TickData(trading_symbol)
+                    tick.lastTradedPrice = bTick["last"]
+                    if not isd["segment"] == "INDICES":
+                        tick.lastTradedQuantity = bTick["ltq"]
+                        tick.avgTradedPrice = bTick["avgPrice"]
+                        tick.volume = bTick["ttq"]
+                        tick.totalBuyQuantity = bTick["totalBuyQt"]
+                        tick.totalSellQuantity = bTick["totalSellQ"]
+                    # else:
+                    #   tick.exchange_timestamp = bTick['exchange_timestamp']
+                    tick.open = bTick["open"]
+                    tick.high = bTick["high"]
+                    tick.low = bTick["low"]
+                    tick.close = bTick["close"]
+                    tick.change = bTick["change"]
+                    ticks.append(tick)
+                    self.on_new_ticks(ticks)
+                else:
+                    self.broker.handle_order_update_tick(bTick)
 
             # ticker.subscribe_feeds(get_order_notification=True)
             self.ticker.on_ticks = on_ticks

@@ -251,9 +251,7 @@ class Broker(Base[KiteConnect]):
             return kite.TRANSACTION_TYPE_SELL
         return None
 
-    def update_order(self, order, data):
-        if order is None:
-            return
+    def handle_order_update_tick(self, data) -> None:
         logging.info(data)
 
     def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
@@ -266,23 +264,23 @@ class Broker(Base[KiteConnect]):
 
         # convert broker quote to our system quote
         quote.trading_symbol = trading_symbol
-        quote.lastTradedPrice = bQuote["last_price"]
-        quote.lastTradedQuantity = bQuote["last_quantity"]
-        quote.avgTradedPrice = bQuote["average_price"]
+        quote.last_traded_price = bQuote["last_price"]
+        quote.last_traded_quantity = bQuote["last_quantity"]
+        quote.avg_traded_price = bQuote["average_price"]
         quote.volume = bQuote["volume"]
-        quote.totalBuyQuantity = bQuote["buy_quantity"]
-        quote.totalSellQuantity = bQuote["sell_quantity"]
+        quote.total_buy_quantity = bQuote["buy_quantity"]
+        quote.total_sell_quantity = bQuote["sell_quantity"]
         ohlc = bQuote["ohlc"]
         quote.open = ohlc["open"]
         quote.high = ohlc["high"]
         quote.low = ohlc["low"]
         quote.close = ohlc["close"]
         quote.change = bQuote["net_change"]
-        quote.oiDayHigh = bQuote["oi_day_high"]
-        quote.oiDayLow = bQuote["oi_day_low"]
+        quote.oi_day_high = bQuote["oi_day_high"]
+        quote.oi_day_low = bQuote["oi_day_low"]
         quote.oi = bQuote["oi"]
-        quote.lowerCiruitLimit = bQuote["lower_circuit_limit"]
-        quote.upperCircuitLimit = bQuote["upper_circuit_limit"]
+        quote.lower_ciruit_limit = bQuote["lower_circuit_limit"]
+        quote.upper_circuit_limit = bQuote["upper_circuit_limit"]
 
         return quote
 
@@ -295,7 +293,7 @@ class Broker(Base[KiteConnect]):
         # convert broker quote to our system quote
         quote = Quote(trading_symbol)
         quote.trading_symbol = trading_symbol
-        quote.lastTradedPrice = bQuote["last_price"]
+        quote.last_traded_price = bQuote["last_price"]
         ohlc = bQuote["ohlc"]
         quote.open = ohlc["open"]
         quote.high = ohlc["high"]

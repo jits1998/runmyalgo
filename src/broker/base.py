@@ -36,9 +36,6 @@ class Broker(ABC, Generic[T]):
     def fetch_update_all_orders(self, orders: Dict[Order, Any]) -> List[Order]: ...
 
     @abstractmethod
-    def update_order(self, order: Order, data) -> None: ...
-
-    @abstractmethod
     def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote: ...
 
     @abstractmethod
@@ -55,6 +52,9 @@ class Broker(ABC, Generic[T]):
 
     @abstractmethod
     def instruments(self, exchange: str) -> List: ...
+
+    @abstractmethod
+    def handle_order_update_tick(self, data) -> None: ...
 
     def set_access_token(self, access_token: str) -> None:
         self.access_token = access_token

@@ -35,10 +35,10 @@ class Trade:
         self.stoploss_underlying_percentage = 0.0
 
         self.tradeState = TradeState.CREATED  # state of the trade
-        self.timestamp = None  # Set this timestamp to strategy timestamp if you are not sure what to set
+        self.timestamp = 0  # Set this timestamp to strategy timestamp if you are not sure what to set
         self.createTimestamp = int(datetime.timestamp(datetime.now()))  # Timestamp when the trade is created (Not triggered)
-        self.startTimestamp = None  # Timestamp when the trade gets triggered and order placed
-        self.endTimestamp = None  # Timestamp when the trade ended
+        self.startTimestamp = 0  # Timestamp when the trade gets triggered and order placed
+        self.endTimestamp = 0  # Timestamp when the trade ended
         self.pnl = 0.0  # Profit loss of the trade. If trade is Active this shows the unrealized pnl else realized pnl
         self.pnlPercentage = 0.0  # Profit Loss in percentage terms
         self.exit = 0.0  # Exit price of the trade

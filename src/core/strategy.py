@@ -569,7 +569,7 @@ class BaseStrategy(ABC):
         # else:
         trade.endTimestamp = get_epoch()
 
-        trade = calculate_trade_pnl(trade)
+        calculate_trade_pnl(trade)
 
     def square_off(self, reason=TradeExitReason.SQUARE_OFF) -> None:
         for trade in self.trades:
@@ -696,18 +696,18 @@ class BaseStrategy(ABC):
         # Get the nearest premium strike price
         futureSymbol = prepareMonthlyExpiryFuturesSymbol(self.symbol, self.expiryDay)
         quote = self.get_quote(futureSymbol)
-        if quote == None or quote.lastTradedPrice == 0:
+        if quote == None or quote.last_traded_price == 0:
             logging.error("%s: Could not get quote for %s", self.getName(), futureSymbol)
             return
 
-        strikePrice = getNearestStrikePrice(quote.lastTradedPrice, roundToNearestStrike)
+        strikePrice = getNearestStrikePrice(quote.last_traded_price, roundToNearestStrike)
         premium = -1
 
         lastPremium = premium
         lastStrike = strikePrice
 
         while premium < nearestPremium:  # check if we need to go ITM
-            premium = self.get_quote(prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).lastTradedPrice
+            premium = self.get_quote(prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).last_traded_price
             if optionType == "CE":
                 strikePrice = strikePrice - roundToNearestStrike
             else:
@@ -724,11 +724,11 @@ class BaseStrategy(ABC):
 
                 quote = self.get_quote(symbol)
 
-                if quote.totalSellQuantity == 0 and quote.totalBuyQuantity == 0:
+                if quote.total_sell_quantity == 0 and quote.total_buy_quantity == 0:
                     time.sleep(1)
                     quote = self.get_quote(symbol)  # lets try one more time.
 
-                premium = quote.lastTradedPrice
+                premium = quote.last_traded_price
 
                 if premium > nearestPremium:
                     lastPremium = premium
@@ -737,8 +737,8 @@ class BaseStrategy(ABC):
                     if (
                         (lastPremium - nearestPremium) > (nearestPremium - premium)
                         and quote.volume > 0
-                        and quote.totalSellQuantity > 0
-                        and quote.totalBuyQuantity > 0
+                        and quote.total_sell_quantity > 0
+                        and quote.total_buy_quantity > 0
                     ):
                         return strikePrice, premium
                     else:
@@ -747,8 +747,8 @@ class BaseStrategy(ABC):
                             self.getName(),
                             symbol,
                             quote.volume,
-                            quote.totalSellQuantity,
-                            quote.totalBuyQuantity,
+                            quote.total_sell_quantity,
+                            quote.total_buy_quantity,
                         )
                         return lastStrike, lastPremium
 
@@ -767,18 +767,18 @@ class BaseStrategy(ABC):
         # Get the nearest premium strike price
         futureSymbol = prepareMonthlyExpiryFuturesSymbol(self.symbol, self.expiryDay)
         quote = self.get_quote(futureSymbol)
-        if quote == None or quote.lastTradedPrice == 0:
+        if quote == None or quote.last_traded_price == 0:
             logging.error("%s: Could not get quote for %s", self.getName(), futureSymbol)
             return
 
-        strikePrice = getNearestStrikePrice(quote.lastTradedPrice, roundToNearestStrike)
+        strikePrice = getNearestStrikePrice(quote.last_traded_price, roundToNearestStrike)
         premium = -1
 
         lastPremium = premium
         lastStrike = strikePrice
 
         while premium < minimumPremium:  # check if we need to go ITM
-            premium = self.get_quote(prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).lastTradedPrice
+            premium = self.get_quote(prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).last_traded_price
             if optionType == "CE":
                 strikePrice = strikePrice - roundToNearestStrike
             else:
@@ -790,11 +790,11 @@ class BaseStrategy(ABC):
                 get_instrument_data_by_symbol(self.short_code, symbol)
                 quote = self.get_quote(symbol)
 
-                if quote.totalSellQuantity == 0 and quote.totalBuyQuantity == 0:
+                if quote.total_sell_quantity == 0 and quote.total_buy_quantity == 0:
                     time.sleep(1)
                     quote = self.get_quote(symbol)  # lets try one more time.
 
-                premium = quote.lastTradedPrice
+                premium = quote.last_traded_price
 
                 if premium < minimumPremium:
                     return lastStrike, lastPremium
@@ -814,18 +814,18 @@ class BaseStrategy(ABC):
         # Get the nearest premium strike price
         futureSymbol = prepareMonthlyExpiryFuturesSymbol(self.symbol, self.expiryDay)
         quote = self.get_quote(futureSymbol)
-        if quote == None or quote.lastTradedPrice == 0:
+        if quote == None or quote.last_traded_price == 0:
             logging.error("%s: Could not get quote for %s", self.getName(), futureSymbol)
             return
 
-        strikePrice = getNearestStrikePrice(quote.lastTradedPrice, roundToNearestStrike)
+        strikePrice = getNearestStrikePrice(quote.last_traded_price, roundToNearestStrike)
         premium = -1
 
         lastPremium = premium
         lastStrike = strikePrice
 
         while premium < maximumPremium:  # check if we need to go ITM
-            premium = self.get_quote(prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).lastTradedPrice
+            premium = self.get_quote(prepare_weekly_options_symbol(self.symbol, strikePrice, optionType, expiryDay=self.expiryDay)).last_traded_price
             if optionType == "CE":
                 strikePrice = strikePrice - roundToNearestStrike
             else:
@@ -837,11 +837,11 @@ class BaseStrategy(ABC):
                 get_instrument_data_by_symbol(self.short_code, symbol)
                 quote = self.get_quote(symbol)
 
-                if quote.totalSellQuantity == 0 and quote.totalBuyQuantity == 0:
+                if quote.total_sell_quantity == 0 and quote.total_buy_quantity == 0:
                     time.sleep(1)
                     quote = self.get_quote(symbol)  # lets try one more time.
 
-                premium = quote.lastTradedPrice
+                premium = quote.last_traded_price
 
                 if premium < maximumPremium:
                     return strikePrice, premium
@@ -1009,21 +1009,21 @@ class TestStrategy(BaseStrategy):
             logging.error("%s: Could not get quote for %s", self.getName(), indexSymbol)
             return
 
-        ATMStrike = getNearestStrikePrice(quote.lastTradedPrice, 50)
+        ATMStrike = getNearestStrikePrice(quote.last_traded_price, 50)
 
         ATMCESymbol = prepare_weekly_options_symbol(self.symbol, ATMStrike, "CE", expiryDay=self.expiryDay)
-        ATMCEQuote = self.get_quote(ATMCESymbol).lastTradedPrice
+        ATMCEQuote = self.get_quote(ATMCESymbol).last_traded_price
 
         ATMPESymbol = prepare_weekly_options_symbol(self.symbol, ATMStrike, "PE", expiryDay=self.expiryDay)
-        ATMPEQuote = self.get_quote(ATMPESymbol).lastTradedPrice
+        ATMPEQuote = self.get_quote(ATMPESymbol).last_traded_price
 
-        OTMPEStrike = getNearestStrikePrice(quote.lastTradedPrice - 500, 50)
+        OTMPEStrike = getNearestStrikePrice(quote.last_traded_price - 500, 50)
         OTMPESymbol = prepare_weekly_options_symbol(self.symbol, OTMPEStrike, "PE", expiryDay=self.expiryDay)
-        OTMPEQuote = self.get_quote(OTMPESymbol).lastTradedPrice
+        OTMPEQuote = self.get_quote(OTMPESymbol).last_traded_price
 
-        OTMCEStrike = getNearestStrikePrice(quote.lastTradedPrice + 500, 50)
+        OTMCEStrike = getNearestStrikePrice(quote.last_traded_price + 500, 50)
         OTMCESymbol = prepare_weekly_options_symbol(self.symbol, OTMCEStrike, "CE", expiryDay=self.expiryDay)
-        OTMCEQuote = self.get_quote(OTMCESymbol).lastTradedPrice
+        OTMCEQuote = self.get_quote(OTMCESymbol).last_traded_price
 
         # self.generateTrade(OTMPESymbol, Direction.SHORT, self.getLots(), OTMPEQuote * 1.2, 5)
         self.generateTrade(OTMCESymbol, Direction.SHORT, self.getLots(), OTMCEQuote * 1.2, 5)

@@ -30,7 +30,7 @@
         "--profile",
         "black"
     ],
-    "explorer.sortOrder": "filesFirst",
+    "explorer.sortOrder": "type",
     "gitlens.plusFeatures.enabled": false,
     "mypy-type-checker.cwd": "${workspaceFolder}/src",
     "black-formatter.cwd": "${workspaceFolder}/src",

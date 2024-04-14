@@ -17,11 +17,10 @@ from config import get_server_config
 from core.strategy import BaseStrategy, StartTimedBaseStrategy
 from exceptions import DeRegisterStrategyException
 from instruments import symbol_to_CMP as cmp
-from models import AlgoStatus, TradeState, UserDetails
+from models import AlgoStatus, UserDetails
 from models.order import Order
 from models.trade import Trade
 from utils import (
-    get_epoch,
     get_today_date_str,
     get_user_details,
     is_market_closed_for_the_day,
@@ -115,9 +114,10 @@ class BaseAlgo(threading.Thread, ABC):
                 # save updated data to json file
                 self.save_trades_to_file()
                 self.save_strategies_to_file()
+                self.broker.fetch_update_all_orders(self.orders)
 
             now = datetime.datetime.now()
-            waitSeconds = 5 - (now.second % 5)
+            waitSeconds = 30 - (now.second % 30)
             await asyncio.sleep(waitSeconds)
 
     @abstractmethod

@@ -80,4 +80,4 @@ def get_quote(algo: BaseAlgo, short_code):
     trading_symbol = prepare_weekly_options_symbol(ul, strike, iType, expiryDay=int(expiryDay))
     quote = ms.get_quote(trading_symbol)
 
-    return str(quote.lastTradedPrice)
+    return str(quote.last_traded_price)
