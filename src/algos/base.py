@@ -6,6 +6,7 @@ import os
 import threading
 import time
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Any, Dict, List, Type
 
 import psycopg2  # type: ignore
@@ -43,9 +44,12 @@ class BaseAlgo(threading.Thread, ABC):
             self.short_code,
             self.multiple,
         ) = args
-        self.tasks: List[asyncio.Task] = []
         self.loop = asyncio.new_event_loop()
+        self.tasks: List = []
         asyncio.set_event_loop(self.loop)
+        self.trades_queue: asyncio.Queue[Trade] = asyncio.Queue()
+        self.orders_queue: asyncio.Queue[Order] = asyncio.Queue()
+
         self.loop.set_debug(True)
         self.questDBCursor = self.get_questdb_connection()
         self.strategies_data: Dict[str, Any] = {}
@@ -94,6 +98,16 @@ class BaseAlgo(threading.Thread, ABC):
         play_task = asyncio.run_coroutine_threadsafe(self.play(), self.loop)
         play_task.add_done_callback(self.handle_exception)
         self.tasks.append(play_task)
+
+        orders_task = asyncio.run_coroutine_threadsafe(self.add_orders(), self.loop)
+        orders_task.add_done_callback(self.handle_exception)
+        self.tasks.append(orders_task)
+        self.broker.orders_queue = self.orders_queue
+
+        trades_task = asyncio.run_coroutine_threadsafe(self.add_trades(), self.loop)
+        trades_task.add_done_callback(self.handle_exception)
+        self.tasks.append(trades_task)
+        self.broker.trades_queue = self.trades_queue
 
         start_strategies_fut = asyncio.run_coroutine_threadsafe(self.start_strategies(self.short_code, self.multiple), self.loop)
         start_strategies_fut.add_done_callback(self.handle_exception)
@@ -152,6 +166,16 @@ class BaseAlgo(threading.Thread, ABC):
                 self.dergister_strategy(task.get_name())
                 pass
 
+    async def add_orders(self) -> None:
+        while True:
+            order: Order = await self.orders_queue.get()
+            self.orders[order.order_id] = order
+
+    async def add_trades(self) -> None:
+        while True:
+            trade: Trade = await self.trades_queue.get()
+            self.trades.append(trade)
+
     def ticker_listener(self, tick):
         logging.debug("tickerLister: new tick received for %s = %f", tick.trading_symbol, tick.lastTradedPrice)
         # Store the latest tick in map
@@ -204,7 +228,7 @@ class BaseAlgo(threading.Thread, ABC):
         tFile = open(trades_filepath, "r")
         tradesData = json.loads(tFile.read())
         for tr in tradesData:
-            trade = self.convert_json_to_trade(tr)
+            trade = convert_json_to_trade(tr)
             logging.info("load_trades_from_file trade => %s", trade)
             self.trades.append(trade)
             if trade.trading_symbol not in self.registeredSymbols:
@@ -253,4 +277,71 @@ class TradeEncoder(json.JSONEncoder):
             return o.isoformat()
         if isinstance(o, BaseStrategy):
             return o.asDict()
+        if isinstance(o, Enum):
+            return o.value
         return o.__dict__
+
+
+def convert_json_to_order(jsonData):
+    if jsonData == None:
+        return None
+    order = Order()
+    order.trading_symbol = jsonData["trading_symbol"]
+    order.exchange = jsonData["exchange"]
+    order.product_type = jsonData["product_type"]
+    order.order_type = jsonData["order_type"]
+    order.price = jsonData["price"]
+    order.trigger_price = jsonData["trigger_price"]
+    order.qty = jsonData["qty"]
+    order.order_id = jsonData["order_id"]
+    order.order_status = jsonData["order_status"]
+    order.average_price = jsonData["average_price"]
+    order.filled_qty = jsonData["filled_qty"]
+    order.pending_qty = jsonData["pending_qty"]
+    order.place_timestamp = jsonData["place_timestamp"]
+    order.update_timestamp = jsonData["update_timestamp"]
+    order.message = jsonData["message"]
+    order.parent_order_id = jsonData.get("parent_order_id", "")
+    return order
+
+
+def convert_json_to_trade(jsonData):
+    trade = Trade(jsonData["tradingSymbol"])
+    trade.trade_id = jsonData["trade_id"]
+    trade.strategy = jsonData["strategy"]
+    trade.direction = jsonData["direction"]
+    trade.product_type = jsonData["product_type"]
+    trade.is_futures = jsonData["is_futures"]
+    trade.is_options = jsonData["is_options"]
+    trade.option_type = jsonData["option_type"]
+    trade.underLying = jsonData.get("underLying", "")
+    trade.place_market_order = jsonData["place_market_order"]
+    trade.intraday_squareoff_timestamp = jsonData["intraday_squareoff_timestamp"]
+    trade.requested_entry = jsonData["requested_entry"]
+    trade.entry = jsonData["entry"]
+    trade.qty = jsonData["qty"]
+    trade.filled_qty = jsonData["filled_qty"]
+    trade.initial_stoploss = jsonData["initial_stoploss"]
+    trade.stopLoss = jsonData["_stopLoss"]
+    trade.stoploss_percentage = jsonData.get("stoploss_percentage", 0)
+    trade.stoploss_underlying_percentage = jsonData.get("stoploss_underlying_percentage", 0)
+    trade.target = jsonData["target"]
+    trade.cmp = jsonData["cmp"]
+    trade.state = jsonData["state"]
+    trade.timestamp = jsonData["timestamp"]
+    trade.create_timestamp = jsonData["create_timestamp"]
+    trade.start_timestamp = jsonData["start_timestamp"]
+    trade.end_timestamp = jsonData["end_timestamp"]
+    trade.pnl = jsonData["pnl"]
+    trade.pnl_percentage = jsonData["pnlPercentage"]
+    trade.exit = jsonData["exit"]
+    trade.exit_reason = jsonData["exit_reason"]
+    trade.exchange = jsonData["exchange"]
+    trade.sl_orders
+    for entry_order in jsonData["entry_orders"]:
+        trade.entry_orders.append(convert_json_to_order(entry_order))
+    for sl_order in jsonData["sl_orders"]:
+        trade.sl_orders.append(convert_json_to_order(sl_order))
+    for target_order in jsonData["target_orders"]:
+        trade.target_orders.append(convert_json_to_order(target_order))
+    return trade

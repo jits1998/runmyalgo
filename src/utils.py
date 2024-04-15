@@ -35,7 +35,7 @@ def roundoff(price: float) -> float:  # Round off to 2 decimal places
 
 
 def calculate_trade_pnl(trade: Trade) -> None:
-    if trade.tradeState == TradeState.ACTIVE:
+    if trade.state == TradeState.ACTIVE:
         if trade.cmp > 0:
             if trade.direction == Direction.LONG:
                 trade.pnl = roundoff(trade.filled_qty * (trade.cmp - trade.entry))
@@ -49,7 +49,7 @@ def calculate_trade_pnl(trade: Trade) -> None:
                 trade.pnl = roundoff(trade.filled_qty * (trade.entry - trade.exit))
     tradeValue = trade.entry * trade.filled_qty
     if tradeValue > 0:
-        trade.pnlPercentage = roundoff(trade.pnl * 100 / tradeValue)
+        trade.pnl_percentage = roundoff(trade.pnl * 100 / tradeValue)
 
 
 def get_epoch(datetimeObj=None) -> int:
@@ -178,6 +178,7 @@ def get_monthly_expiry_day(datetimeObj=None, expiryDay=3):
     return datetimeExpiryDay
 
 
+@functools.lru_cache
 def is_today_weekly_expiry(inputSymbol, expiryDay=2):
     expiryDate = get_weekly_expiry_day(inputSymbol, expiryDay=expiryDay)
     todayDate = get_time_today(0, 0, 0)

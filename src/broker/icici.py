@@ -54,7 +54,7 @@ class Broker(Base[BreezeConnect]):
 
         return redirect_url
 
-    def place_order(self, oip: OrderInputParams) -> Order:
+    async def place_order(self, oip: OrderInputParams) -> Order:
         logging.debug("%s:%s:: Going to place order with params %s", self.broker_name, self.short_code, oip)
         breeze = self.broker_handle
         oip.qty = int(oip.qty)
@@ -91,11 +91,12 @@ class Broker(Base[BreezeConnect]):
                 expiry_date=isd["expiry"],
             )
 
-            logging.info("%s:%s:: Order placed successfully, orderId = %s with tag: %s", self.broker_name, self.short_code, order_id, oip.tag)
             order = Order(oip)
             order.order_id = order_id["Success"]["order_id"]
             order.place_timestamp = get_epoch()
             order.update_timestamp = get_epoch()
+            await self.orders_queue.put(order)
+            logging.info("%s:%s:: Order placed successfully, orderId = %s with tag: %s", self.broker_name, self.short_code, order.order_id, oip.tag)
             return order
         except Exception as e:
             if "Too many requests" in str(e):
@@ -103,11 +104,11 @@ class Broker(Base[BreezeConnect]):
                 import time
 
                 time.sleep(1)
-                self.place_order(oip)
+                await self.place_order(oip)
             logging.info("%s:%s Order placement failed: %s", self.broker_name, self.short_code, str(order_id))
             if "price cannot be" in order_id["Error"]:
                 oip.order_type = OrderType.LIMIT
-                return self.place_order(oip)
+                return await self.place_order(oip)
             else:
                 raise Exception(str(e))
 
@@ -217,13 +218,13 @@ class Broker(Base[BreezeConnect]):
                 assert parentOrder is not None
                 oip = OrderInputParams(parentOrder.trading_symbol)
                 oip.exchange = parentOrder.exchange
-                oip.product_type = parentOrder.productType
+                oip.product_type = parentOrder.product_type
                 oip.order_type = parentOrder.order_type
                 oip.price = parentOrder.price
                 oip.trigger_price = parentOrder.trigger_price
                 oip.qty = parentOrder.qty
                 oip.tag = parentOrder.tag
-                oip.product_type = parentOrder.productType
+                oip.product_type = parentOrder.product_type
                 order = Order(oip)
                 order.order_id = bOrder["order_id"]
                 order.parent_order_id = parentOrder.order_id
@@ -337,7 +338,7 @@ class Broker(Base[BreezeConnect]):
                 right=right,
                 strike_price=isd["strike"],
             )["Success"][0]
-        except requests.exceptions.HttpError as e:
+        except requests.exceptions.HTTPError as e:
             if e.response.status_code == 503:
                 retry = True
         if retry:
@@ -431,7 +432,7 @@ class Broker(Base[BreezeConnect]):
                     instrument["last_price"] = 0.0
                     instrument["expiry"] = row[' "ExpiryDate"']
                     instrument["strike"] = 0
-                    instrument["tick_size"] = float(row[' "ticksize"'])
+                    instrument["tick_size"] = float(row[' "ticksize"']) / 100
                     instrument["lot_size"] = int(row[' "Lotsize"'])
                     instrument["instrument_type"] = "EQ"
                     instrument["segment"] = "NSE" if row[' "Series"'] not in ["0"] else "INDICES"
@@ -452,7 +453,7 @@ class Broker(Base[BreezeConnect]):
                     instrument["last_price"] = 0.0
                     instrument["expiry"] = row["ExpiryDate"]
                     instrument["strike"] = row["StrikePrice"]
-                    instrument["tick_size"] = float(row["TickSize"])
+                    instrument["tick_size"] = float(row["TickSize"]) / 100.0
                     instrument["lot_size"] = int(row["LotSize"])
                     instrument["instrument_type"] = row["OptionType"] if row["OptionType"] != "XX" else "FUT"
                     instrument["segment"] = "NFO-" + row["Series"][:3]

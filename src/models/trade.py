@@ -18,7 +18,7 @@ class Trade:
         self.product_type = ProductType.MIS
         self.is_futures = False  # Futures trade
         self.is_options = False  # Options trade
-        self.optionType = None  # CE/PE. Applicable only if isOptions is True
+        self.option_type = None  # CE/PE. Applicable only if isOptions is True
         self.underLying = None  # NIFTY BANK / NIFTY 50, only if isOptions or isFutures set to True
         self.place_market_order = False  # True means place the entry order with Market Order Type
         self.intraday_squareoff_timestamp = None  # Can be strategy specific. Some can square off at 15:00:00 some can at 15:15:00 etc.
@@ -34,19 +34,19 @@ class Trade:
         self.stoploss_percentage = 0.0
         self.stoploss_underlying_percentage = 0.0
 
-        self.tradeState = TradeState.CREATED  # state of the trade
+        self.state = TradeState.CREATED  # state of the trade
         self.timestamp = 0  # Set this timestamp to strategy timestamp if you are not sure what to set
-        self.createTimestamp = int(datetime.timestamp(datetime.now()))  # Timestamp when the trade is created (Not triggered)
-        self.startTimestamp = 0  # Timestamp when the trade gets triggered and order placed
-        self.endTimestamp = 0  # Timestamp when the trade ended
+        self.create_timestamp = int(datetime.timestamp(datetime.now()))  # Timestamp when the trade is created (Not triggered)
+        self.start_timestamp = 0  # Timestamp when the trade gets triggered and order placed
+        self.end_timestamp = 0  # Timestamp when the trade ended
         self.pnl = 0.0  # Profit loss of the trade. If trade is Active this shows the unrealized pnl else realized pnl
-        self.pnlPercentage = 0.0  # Profit Loss in percentage terms
+        self.pnl_percentage = 0.0  # Profit Loss in percentage terms
         self.exit = 0.0  # Exit price of the trade
-        self.exitReason = None  # SL/Target/SquareOff/Any Other
+        self.exit_reason = None  # SL/Target/SquareOff/Any Other
 
         self.entry_orders: List[Order] = []  # Object of Type ordermgmt.Order
-        self.slOrder: List[Order] = []  # Object of Type ordermgmt.Order
-        self.targetOrder: List[Order] = []  # Object of Type ordermgmt.Order
+        self.sl_orders: List[Order] = []  # Object of Type ordermgmt.Order
+        self.target_orders: List[Order] = []  # Object of Type ordermgmt.Order
 
     @property
     def stopLoss(self):
@@ -88,17 +88,17 @@ class Trade:
             "ID="
             + str(self.trade_id)
             + ", state="
-            + self.tradeState
+            + self.state.value
             + ", symbol="
             + self.trading_symbol
             + ", strategy="
             + self.strategy
             + ", direction="
-            + self.direction
+            + self.direction.value
             + ", MarketOrder="
             + str(self.place_market_order)
             + ", productType="
-            + self.product_type
+            + self.product_type.value
             + ", reqEntry="
             + str(self.requested_entry)
             + ", stopLoss="

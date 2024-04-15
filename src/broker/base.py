@@ -1,9 +1,11 @@
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar
 
 from core import Quote
 from models.order import Order, OrderInputParams, OrderModifyParams
+from models.trade import Trade
 
 T = TypeVar("T")
 
@@ -12,6 +14,8 @@ class Broker(ABC, Generic[T]):
     broker_handle: T
     user_details: Dict[str, str]
     access_token: Optional[str]
+    trades_queue: asyncio.Queue[Trade]
+    orders_queue: asyncio.Queue[Order]
 
     def __init__(self, user_details: Dict[str, str]) -> None:
         self.user_details = user_details
@@ -24,7 +28,7 @@ class Broker(ABC, Generic[T]):
     def login(self, args: Dict) -> str: ...
 
     @abstractmethod
-    def place_order(self, order_input_params: OrderInputParams) -> Order: ...
+    async def place_order(self, order_input_params: OrderInputParams) -> Order: ...
 
     @abstractmethod
     def modify_order(self, order: Order, order_modify_params: OrderModifyParams, qty: int) -> Order: ...

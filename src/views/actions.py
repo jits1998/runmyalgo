@@ -15,7 +15,14 @@ from views.home import get_algo, token_required
 @app.route("/me/<short_code>/strategy/exit/<name>")
 def exit_strategy(algo: BaseAlgo, short_code: str, name: str):
 
-    algo.strategy_to_instance[name].square_off(TradeExitReason.MANUAL_EXIT)
+    assert algo is not None
+
+    async def square_off(name):
+        algo.strategy_to_instance[name].square_off(TradeExitReason.MANUAL_EXIT)
+
+    squareoff_task = asyncio.run_coroutine_threadsafe(square_off(name), algo.loop)
+    squareoff_task.add_done_callback(algo.handle_exception)
+    algo.tasks.append(squareoff_task)
 
     return redirect(url_for("home", short_code=short_code))
 
@@ -23,13 +30,18 @@ def exit_strategy(algo: BaseAlgo, short_code: str, name: str):
 @token_required
 @app.route("/me/<short_code>/trade/exit/<id>")
 def exit_trade(algo: BaseAlgo, short_code, id):
+
+    async def square_off(trade):
+        await algo.strategy_to_instance[trade.strategy].square_off_trade(trade, TradeExitReason.MANUAL_EXIT)
+
     name = id.split(":")[0]
 
     trades = algo.get_trades_by_strategy(name)
 
     for trade in trades:
         if trade.trade_id == id:
-            algo.strategy_to_instance[trade.strategy].square_off_trade(trade, TradeExitReason.MANUAL_EXIT)
+            squareoff_task = asyncio.run_coroutine_threadsafe(square_off(trade), algo.loop)
+            algo.tasks.append(squareoff_task)
 
     return redirect(url_for("home", short_code=short_code))
 

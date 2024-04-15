@@ -53,7 +53,7 @@ class Broker(Base[KiteConnect]):
 
         return redirectUrl
 
-    def place_order(self, oip: OrderInputParams):
+    async def place_order(self, oip: OrderInputParams):
         logging.debug("%s:%s:: Going to place order with params %s", self.broker_name, self.short_code, oip)
         kite = self.broker_handle
         oip.qty = int(oip.qty)
@@ -90,6 +90,7 @@ class Broker(Base[KiteConnect]):
             order.order_id = orderId
             order.place_timestamp = get_epoch()
             order.update_timestamp = get_epoch()
+            await self.orders_queue.put(order)
             return order
         except Exception as e:
             if "Too many requests" in str(e):
@@ -97,11 +98,11 @@ class Broker(Base[KiteConnect]):
                 import time
 
                 time.sleep(1)
-                self.place_order(oip)
+                return await self.place_order(oip)
             logging.info("%s:%s Order placement failed: %s", self.broker_name, self.short_code, str(e))
             if "Trigger price for stoploss" in str(e):
                 oip.order_type = OrderType.LIMIT
-                return self.place_order(oip)
+                return await self.place_order(oip)
             else:
                 raise Exception(str(e))
 
@@ -206,13 +207,13 @@ class Broker(Base[KiteConnect]):
             elif foundChildOrder != None:
                 oip = OrderInputParams(parentOrder.trading_symbol)
                 oip.exchange = parentOrder.exchange
-                oip.product_type = parentOrder.productType
+                oip.product_type = parentOrder.product_type
                 oip.order_type = parentOrder.orderType
                 oip.price = parentOrder.price
                 oip.trigger_price = parentOrder.trigger_price
                 oip.qty = parentOrder.qty
                 oip.tag = parentOrder.tag
-                oip.product_type = parentOrder.productType
+                oip.product_type = parentOrder.product_type
                 order = Order(oip)
                 order.order_id = bOrder["order_id"]
                 order.parent_order_id = parentOrder.order_id
