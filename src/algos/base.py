@@ -18,7 +18,15 @@ from config import get_server_config
 from core.strategy import BaseStrategy, StartTimedBaseStrategy
 from exceptions import DeRegisterStrategyException
 from instruments import symbol_to_CMP as cmp
-from models import AlgoStatus, UserDetails
+from models import (
+    AlgoStatus,
+    Direction,
+    OrderType,
+    ProductType,
+    TradeExitReason,
+    TradeState,
+    UserDetails,
+)
 from models.order import Order
 from models.trade import Trade
 from utils import (
@@ -278,7 +286,7 @@ class TradeEncoder(json.JSONEncoder):
         if isinstance(o, BaseStrategy):
             return o.asDict()
         if isinstance(o, Enum):
-            return o.value
+            return o.name
         return o.__dict__
 
 
@@ -288,8 +296,8 @@ def convert_json_to_order(jsonData):
     order = Order()
     order.trading_symbol = jsonData["trading_symbol"]
     order.exchange = jsonData["exchange"]
-    order.product_type = jsonData["product_type"]
-    order.order_type = jsonData["order_type"]
+    order.product_type = ProductType[jsonData["product_type"]]
+    order.order_type = OrderType[jsonData["order_type"]]
     order.price = jsonData["price"]
     order.trigger_price = jsonData["trigger_price"]
     order.qty = jsonData["qty"]
@@ -309,8 +317,8 @@ def convert_json_to_trade(jsonData):
     trade = Trade(jsonData["tradingSymbol"])
     trade.trade_id = jsonData["trade_id"]
     trade.strategy = jsonData["strategy"]
-    trade.direction = jsonData["direction"]
-    trade.product_type = jsonData["product_type"]
+    trade.direction = Direction[jsonData["direction"]]
+    trade.product_type = ProductType[jsonData["product_type"]]
     trade.is_futures = jsonData["is_futures"]
     trade.is_options = jsonData["is_options"]
     trade.option_type = jsonData["option_type"]
@@ -323,11 +331,11 @@ def convert_json_to_trade(jsonData):
     trade.filled_qty = jsonData["filled_qty"]
     trade.initial_stoploss = jsonData["initial_stoploss"]
     trade.stopLoss = jsonData["_stopLoss"]
-    trade.stoploss_percentage = jsonData.get("stoploss_percentage", 0)
-    trade.stoploss_underlying_percentage = jsonData.get("stoploss_underlying_percentage", 0)
+    trade.stoploss_percentage = jsonData.get("stoploss_percentage", 0.0)
+    trade.stoploss_underlying_percentage = jsonData.get("stoploss_underlying_percentage", 0.0)
     trade.target = jsonData["target"]
     trade.cmp = jsonData["cmp"]
-    trade.state = jsonData["state"]
+    trade.state = TradeState[jsonData["state"]]
     trade.timestamp = jsonData["timestamp"]
     trade.create_timestamp = jsonData["create_timestamp"]
     trade.start_timestamp = jsonData["start_timestamp"]
@@ -335,7 +343,7 @@ def convert_json_to_trade(jsonData):
     trade.pnl = jsonData["pnl"]
     trade.pnl_percentage = jsonData["pnlPercentage"]
     trade.exit = jsonData["exit"]
-    trade.exit_reason = jsonData["exit_reason"]
+    trade.exit_reason = TradeExitReason[jsonData["exit_reason"]]
     trade.exchange = jsonData["exchange"]
     trade.sl_orders
     for entry_order in jsonData["entry_orders"]:
