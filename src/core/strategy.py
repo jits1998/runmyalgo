@@ -170,7 +170,14 @@ class BaseStrategy(ABC):
                 raise DeRegisterStrategyException("Market is closed, Can't run it")
 
         for trade in self.trades:
-            if trade.exit_reason not in [None, TradeExitReason.SL_HIT, TradeExitReason.TARGET_HIT, TradeExitReason.TRAIL_SL_HIT, TradeExitReason.MANUAL_EXIT]:
+            if trade.exit_reason not in [
+                None,
+                TradeExitReason.SL_HIT.value,
+                TradeExitReason.TARGET_HIT.value,
+                TradeExitReason.TRAIL_SL_HIT.value,
+                TradeExitReason.MANUAL_EXIT.value,
+            ]:
+                assert trade.exit_reason is not None
                 logging.warn("Exiting %s as a trade found with %s", self.getName(), trade.exit_reason)
                 return  # likely something at strategy level or broker level, won't continue
 
@@ -206,7 +213,7 @@ class BaseStrategy(ABC):
                 return
 
             # track each trade and take necessary action
-            await self.trackAndUpdateAllTrades()
+            self.trackAndUpdateAllTrades()
 
             self.checkStrategyHealth()
 
@@ -218,13 +225,13 @@ class BaseStrategy(ABC):
             waitSeconds = 5 - (now.second % 5) + 3
             await asyncio.sleep(waitSeconds)
 
-    async def trackAndUpdateAllTrades(self):
+    def trackAndUpdateAllTrades(self):
 
         for trade in self.trades:
             if trade.state == TradeState.ACTIVE:
-                await self._trackEntryOrder(trade)
-                await self._trackTargetOrder(trade)
-                await self._trackSLOrder(trade)
+                self._trackEntryOrder(trade)
+                self._trackTargetOrder(trade)
+                self._trackSLOrder(trade)
                 if trade.intraday_squareoff_timestamp != None:
                     nowEpoch = get_epoch()
                     if nowEpoch >= trade.intraday_squareoff_timestamp:
@@ -237,7 +244,7 @@ class BaseStrategy(ABC):
             if SLorTargetHit is not None:
                 self.squareOffStrategy(SLorTargetHit)
 
-    async def _trackEntryOrder(self, trade: Trade):
+    def _trackEntryOrder(self, trade: Trade):
         if trade.state != TradeState.ACTIVE:
             return
 
@@ -287,14 +294,14 @@ class BaseStrategy(ABC):
             for trade in strategy.trades:
                 if trade.state in [TradeState.ACTIVE]:
                     trade.target = get_cmp(self.short_code, trade.trading_symbol)
-                    await self.square_off_trade(trade, TradeExitReason.TRADE_FAILED)
+                    self.square_off_trade(trade, TradeExitReason.TRADE_FAILED)
                 strategy.setDisabled()
 
         # Update the current market price and calculate pnl
         trade.cmp = get_cmp(self.short_code, trade.trading_symbol)
         calculate_trade_pnl(trade)
 
-    async def _trackSLOrder(self, trade: Trade):
+    def _trackSLOrder(self, trade: Trade):
         if trade.state != TradeState.ACTIVE:
             for entryOrder in trade.entry_orders:
                 if entryOrder.order_status in [OrderStatus.OPEN, OrderStatus.TRIGGER_PENDING]:
@@ -309,7 +316,7 @@ class BaseStrategy(ABC):
 
         if len(trade.sl_orders) == 0 and trade.entry > 0:
             # Place SL order
-            await self.place_sl_order(trade)
+            self.place_sl_order(trade)
         else:
             slCompleted = 0
             slAverage = 0.0
@@ -367,14 +374,14 @@ class BaseStrategy(ABC):
                 for trade in strategy.trades:
                     if trade.state in [TradeState.ACTIVE]:
                         trade.target = get_cmp(self.short_code, trade.trading_symbol)
-                        await self.square_off_trade(trade, TradeExitReason.TRADE_FAILED)
+                        self.square_off_trade(trade, TradeExitReason.TRADE_FAILED)
                     strategy.setDisabled()
             elif slOpen > 0:
                 pass  # handled above, skip calling trail SL
             else:
-                await self.checkAndUpdateTrailSL(trade)
+                self.checkAndUpdateTrailSL(trade)
 
-    async def checkAndUpdateTrailSL(self, trade: Trade):
+    def checkAndUpdateTrailSL(self, trade: Trade):
         # Trail the SL if applicable for the trade
         strategyInstance = self
         newTrailSL = round_to_ticksize(self.short_code, trade.trading_symbol, strategyInstance.getTrailingSL(trade))
@@ -385,13 +392,13 @@ class BaseStrategy(ABC):
                     updateSL = True
                 else:
                     logging.info("TradeManager: Trail SL %f triggered Squareoff at market for tradeID %s", newTrailSL, trade.trade_id)
-                    await self.square_off_trade(trade, reason=TradeExitReason.SL_HIT)
+                    self.square_off_trade(trade, reason=TradeExitReason.SL_HIT)
             elif trade.direction == Direction.SHORT and newTrailSL < trade.stopLoss:
                 if newTrailSL > trade.cmp:
                     updateSL = True
                 else:  # in case the SL is called due to all leg squareoff
                     logging.info("TradeManager: Trail SL %f triggered Squareoff at market for tradeID %s", newTrailSL, trade.trade_id)
-                    await self.square_off_trade(trade, reason=TradeExitReason.SL_HIT)
+                    self.square_off_trade(trade, reason=TradeExitReason.SL_HIT)
         if updateSL == True:
             omp = OrderModifyParams()
             omp.newTriggerPrice = newTrailSL
@@ -409,14 +416,14 @@ class BaseStrategy(ABC):
             except Exception as e:
                 logging.error("TradeManager: Failed to modify SL order for tradeID %s : Error => %s", trade.trade_id, str(e))
 
-    async def _trackTargetOrder(self, trade: Trade):
+    def _trackTargetOrder(self, trade: Trade):
         if trade.state != TradeState.ACTIVE and self.isTargetORSLHit() is not None:
             return
         if trade.target == 0:  # Do not place Target order if no target provided
             return
         if len(trade.target_orders) == 0 and trade.entry > 0:  # place target order only after the entry happened
             # Place Target order
-            await self.place_target_order(trade)
+            self.place_target_order(trade)
         else:
             targetCompleted = 0
             targetAverage = 0.0
@@ -471,13 +478,19 @@ class BaseStrategy(ABC):
             try:
                 self.cancel_order(order)
             except Exception as e:
-                logging.error("TradeManager: Failed to cancel order %s: Error => %s", order.order_id, str(e))
+                logging.error("Failed to cancel order %s: Error => %s", order.order_id, str(e))
                 raise (e)
-            logging.info("TradeManager: Successfully cancelled order %s", order.order_id)
+            logging.info("Successfully cancelled order %s", order.order_id)
 
-    async def place_entry_order(self, trade: Trade):
-        if not self.shouldPlaceTrade(trade):
-            return
+    def place_entry_order(self, trade: Trade):
+        try:
+            if not self.shouldPlaceTrade(trade):
+                return False
+        except DisableTradeException as e:
+            logging.info("Going to disable trade ID %s with the reason %s", trade.trade_id, str(e))
+            trade.state = TradeState.DISABLED
+            return False
+
         logging.info("TradeManager: Execute trade called for %s", trade)
         trade.initial_stoploss = trade.stopLoss
         # Create order input params object and place order
@@ -493,7 +506,7 @@ class BaseStrategy(ABC):
         if trade.is_futures == True or trade.is_options == True:
             oip.is_fno = True
         try:
-            placed_order = await self.broker.place_order(oip)
+            placed_order = self.broker.place_order(oip)
             trade.entry_orders.append(placed_order)
             self.orders[placed_order.order_id] = placed_order
         except Exception as e:
@@ -501,10 +514,10 @@ class BaseStrategy(ABC):
             return False
 
         logging.info("Execute trade successful for %s and entryOrder %s", trade, placed_order)
-        await self.broker.trades_queue.put(trade)
+        self.broker.trades_queue.put_nowait(trade)
         return True
 
-    async def place_target_order(self, trade: Trade, isMarketOrder: bool = False, target: float = 0.0):
+    def place_target_order(self, trade: Trade, isMarketOrder: bool = False, target: float = 0.0):
         oip = OrderInputParams(trade.trading_symbol)
         oip.exchange = trade.exchange
         oip.direction = Direction.SHORT if trade.direction == Direction.LONG else Direction.LONG
@@ -521,7 +534,7 @@ class BaseStrategy(ABC):
         if trade.is_futures == True or trade.is_options == True:
             oip.is_fno = True
         try:
-            placed_order = await self.broker.place_order(oip)
+            placed_order = self.broker.place_order(oip)
             trade.target_orders.append(placed_order)
             self.orders[placed_order.order_id] = placed_order
             trade.target = target
@@ -530,7 +543,7 @@ class BaseStrategy(ABC):
             raise (e)
         logging.info("Successfully placed Target order %s for tradeID %s", placed_order.order_id, trade.trade_id)
 
-    async def place_sl_order(self, trade: Trade):
+    def place_sl_order(self, trade: Trade):
         oip = OrderInputParams(trade.trading_symbol)
         oip.exchange = trade.exchange
         oip.direction = Direction.SHORT if trade.direction == Direction.LONG else Direction.LONG
@@ -543,7 +556,7 @@ class BaseStrategy(ABC):
         if trade.is_futures == True or trade.is_options == True:
             oip.is_fno = True
         try:
-            placed_order = await self.broker.place_order(oip)
+            placed_order = self.broker.place_order(oip)
             trade.sl_orders.append(placed_order)
             self.orders[placed_order.order_id] = placed_order
         except Exception as e:
@@ -573,19 +586,19 @@ class BaseStrategy(ABC):
 
         calculate_trade_pnl(trade)
 
-    async def square_off(self, reason=TradeExitReason.SQUARE_OFF) -> None:
+    def square_off(self, reason=TradeExitReason.SQUARE_OFF) -> None:
         for trade in self.trades:
             if trade.state in [TradeState.ACTIVE]:
                 trade.target = get_cmp(self.short_code, trade.trading_symbol)
-                await self.square_off_trade(trade, reason)
+                self.square_off_trade(trade, reason)
         self.setDisabled()
 
-    async def square_off_trade(self, trade: Trade, reason=TradeExitReason.SQUARE_OFF):
+    def square_off_trade(self, trade: Trade, reason=TradeExitReason.SQUARE_OFF):
         logging.info("TradeManager: squareOffTrade called for tradeID %s with reason %s", trade.trade_id, reason)
         if trade == None or trade.state != TradeState.ACTIVE:
             return
 
-        trade.exit_reason = reason
+        trade.exit_reason = reason.value
         if len(trade.entry_orders) > 0:
             for entryOrder in trade.entry_orders:
                 if entryOrder.order_status in [OrderStatus.OPEN, OrderStatus.TRIGGER_PENDING]:
@@ -614,12 +627,9 @@ class BaseStrategy(ABC):
         elif trade.entry > 0:
             # Place new target order to exit position, adjust target to current market price
             logging.info("TradeManager: placing new target order to exit position for tradeID %s", trade.trade_id)
-            await self.place_target_order(trade, isMarketOrder=True, target=(trade.cmp * (0.99 if trade.direction == Direction.LONG else 1.01)))
+            self.place_target_order(trade, isMarketOrder=True, target=(trade.cmp * (0.99 if trade.direction == Direction.LONG else 1.01)))
 
-    def shouldPlaceTrade(self, trade):
-        # Each strategy should call this function from its own shouldPlaceTrade() method before working on its own logic
-        if trade == None:
-            return False
+    def shouldPlaceTrade(self, trade: Trade) -> bool:
         if trade.qty == 0:
             raise DisableTradeException("Invalid Quantity")
 
@@ -650,7 +660,7 @@ class BaseStrategy(ABC):
     def getTrailingSL(self, trade: Trade):
         return 0
 
-    async def generateTrade(self, optionSymbol, direction, numLots, lastTradedPrice, slPercentage=0.0, slPrice=0.0, targetPrice=0.0, placeMarketOrder=True):
+    def generateTrade(self, optionSymbol, direction, numLots, lastTradedPrice, slPercentage=0.0, slPrice=0.0, targetPrice=0.0, placeMarketOrder=True):
         trade = Trade(optionSymbol, self.getName())
         trade.is_options = True
         trade.exchange = self.exchange
@@ -668,12 +678,11 @@ class BaseStrategy(ABC):
         trade.qty = isd["lot_size"] * numLots
 
         trade.intraday_squareoff_timestamp = get_epoch(self.squareOffTimestamp)
-        self.trades.append(trade)
-        await self.place_entry_order(trade)
 
-    async def generateTradeWithSLPrice(
-        self, optionSymbol, direction, numLots, lastTradedPrice, underLying, underLyingStopLossPercentage, placeMarketOrder=True
-    ):
+        if self.place_entry_order(trade):
+            self.trades.append(trade)
+
+    def generateTradeWithSLPrice(self, optionSymbol, direction, numLots, lastTradedPrice, underLying, underLyingStopLossPercentage, placeMarketOrder=True):
         trade = Trade(optionSymbol, self.getName())
         trade.is_options = True
         trade.exchange = self.exchange
@@ -693,6 +702,7 @@ class BaseStrategy(ABC):
         trade.target = 0  # setting to 0 as no target is applicable for this trade
 
         trade.intraday_squareoff_timestamp = get_epoch(self.squareOffTimestamp)
+        trade.start_timestamp = get_epoch()
         self.trades.append(trade)
         self.place_entry_order(trade)
 
@@ -1031,7 +1041,7 @@ class TestStrategy(BaseStrategy):
         OTMCEQuote = self.get_quote(OTMCESymbol).last_traded_price
 
         # self.generateTrade(OTMPESymbol, Direction.SHORT, self.getLots(), OTMPEQuote * 1.2, 5)
-        await self.generateTrade(OTMCESymbol, Direction.SHORT, self.getLots(), OTMCEQuote * 1.2, 5)
+        self.generateTrade(OTMCESymbol, Direction.SHORT, self.getLots(), OTMCEQuote * 1.2, 5)
 
     def shouldPlaceTrade(self, trade: Trade):
         if not super().shouldPlaceTrade(trade):

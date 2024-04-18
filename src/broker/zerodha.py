@@ -53,7 +53,7 @@ class Broker(Base[KiteConnect]):
 
         return redirectUrl
 
-    async def place_order(self, oip: OrderInputParams):
+    def place_order(self, oip: OrderInputParams):
         logging.debug("%s:%s:: Going to place order with params %s", self.broker_name, self.short_code, oip)
         kite = self.broker_handle
         oip.qty = int(oip.qty)
@@ -90,7 +90,7 @@ class Broker(Base[KiteConnect]):
             order.order_id = orderId
             order.place_timestamp = get_epoch()
             order.update_timestamp = get_epoch()
-            await self.orders_queue.put(order)
+            self.orders_queue.put_nowait(order)
             return order
         except Exception as e:
             if "Too many requests" in str(e):
@@ -98,11 +98,11 @@ class Broker(Base[KiteConnect]):
                 import time
 
                 time.sleep(1)
-                return await self.place_order(oip)
+                return self.place_order(oip)
             logging.info("%s:%s Order placement failed: %s", self.broker_name, self.short_code, str(e))
             if "Trigger price for stoploss" in str(e):
                 oip.order_type = OrderType.LIMIT
-                return await self.place_order(oip)
+                return self.place_order(oip)
             else:
                 raise Exception(str(e))
 
@@ -252,7 +252,7 @@ class Broker(Base[KiteConnect]):
             return kite.TRANSACTION_TYPE_SELL
         return None
 
-    def handle_order_update_tick(self, data) -> None:
+    def handle_order_update_tick(self, order: Order, data: Dict) -> None:
         logging.info(data)
 
     def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
@@ -430,7 +430,7 @@ class Ticker(BaseTicker[Broker]):
         self.onMaxReconnectsAttempt()
 
     def on_order_update(self, ws, data):
-        self.onOrderUpdate(data)
+        self.on_order_update(data)
 
 
 brokers["zerodha"] = Broker

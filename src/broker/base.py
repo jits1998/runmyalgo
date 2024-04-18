@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar
 
 from core import Quote
+from models import TickData
 from models.order import Order, OrderInputParams, OrderModifyParams
 from models.trade import Trade
 
@@ -28,7 +29,7 @@ class Broker(ABC, Generic[T]):
     def login(self, args: Dict) -> str: ...
 
     @abstractmethod
-    async def place_order(self, order_input_params: OrderInputParams) -> Order: ...
+    def place_order(self, order_input_params: OrderInputParams) -> Order: ...
 
     @abstractmethod
     def modify_order(self, order: Order, order_modify_params: OrderModifyParams, qty: int) -> Order: ...
@@ -58,7 +59,7 @@ class Broker(ABC, Generic[T]):
     def instruments(self, exchange: str) -> List: ...
 
     @abstractmethod
-    def handle_order_update_tick(self, data) -> None: ...
+    def handle_order_update_tick(self, order: Order, data: Dict) -> None: ...
 
     def set_access_token(self, access_token: str) -> None:
         self.access_token = access_token
@@ -120,6 +121,10 @@ class Ticker(ABC, Generic[B]):
     def onMaxReconnectsAttempt(self) -> None:
         logging.error("Ticker max auto reconnects attempted and giving up..")
 
-    def onOrderUpdate(self, data: dict) -> None:
+    def on_order_update(self, data: dict) -> None:
         # logging.info('Ticker: order update %s', data)
-        ...
+        for listener in self.tickListeners:
+            try:
+                listener(data)
+            except Exception as e:
+                logging.error("BaseTicker: Exception from listener callback function. Error => %s", str(e))

@@ -54,7 +54,7 @@ class Broker(Base[BreezeConnect]):
 
         return redirect_url
 
-    async def place_order(self, oip: OrderInputParams) -> Order:
+    def place_order(self, oip: OrderInputParams) -> Order:
         logging.debug("%s:%s:: Going to place order with params %s", self.broker_name, self.short_code, oip)
         breeze = self.broker_handle
         oip.qty = int(oip.qty)
@@ -72,7 +72,7 @@ class Broker(Base[BreezeConnect]):
             oip.order_type = OrderType.LIMIT
 
         try:
-            order_id = breeze.place_order(
+            order_info = breeze.place_order(
                 stock_code=isd["name"],
                 # variety= breeze.VARIETY_REGULAR if orderInputParams.qty<=freeze_limit else breeze.VARIETY_ICEBERG,
                 # iceberg_quantity = iceberg_quantity,
@@ -92,10 +92,10 @@ class Broker(Base[BreezeConnect]):
             )
 
             order = Order(oip)
-            order.order_id = order_id["Success"]["order_id"]
+            order.order_id = order_info["Success"]["order_id"]
             order.place_timestamp = get_epoch()
             order.update_timestamp = get_epoch()
-            await self.orders_queue.put(order)
+            self.orders_queue.put_nowait(order)
             logging.info("%s:%s:: Order placed successfully, orderId = %s with tag: %s", self.broker_name, self.short_code, order.order_id, oip.tag)
             return order
         except Exception as e:
@@ -104,12 +104,14 @@ class Broker(Base[BreezeConnect]):
                 import time
 
                 time.sleep(1)
-                await self.place_order(oip)
-            logging.info("%s:%s Order placement failed: %s", self.broker_name, self.short_code, str(order_id))
-            if "price cannot be" in order_id["Error"]:
+                self.place_order(oip)
+            logging.info("%s:%s Order placement failed: %s", self.broker_name, self.short_code, str(order_info))
+            if "price cannot be" in order_info["Error"]:
                 oip.order_type = OrderType.LIMIT
-                return await self.place_order(oip)
+                return self.place_order(oip)
             else:
+                if order_info["Success"] is None:
+                    raise (Exception(order_info["Error"]))
                 raise Exception(str(e))
 
     def modify_order(self, order: Order, omp: OrderModifyParams, tradeQty: int) -> Order:
@@ -174,7 +176,7 @@ class Broker(Base[BreezeConnect]):
         breeze = self.broker_handle
         orderBook = None
         try:
-            orderBook = breeze.orders()
+            orderBook = breeze.get_order_list()
         except Exception as e:
             import traceback
 
@@ -209,7 +211,7 @@ class Broker(Base[BreezeConnect]):
                     # Consider this case as completed in our system as we cancel the order with pending qty when strategy stop timestamp reaches
                     foundOrder.order_status = OrderStatus.COMPLETE
                 foundOrder.price = float(bOrder["price"])
-                foundOrder.trigger_price = float(bOrder["SLTP_price"]) if bOrder["SLTP_price"] != None else ""
+                foundOrder.trigger_price = float(bOrder["SLTP_price"]) if bOrder["SLTP_price"] != None else 0.0
                 foundOrder.average_price = float(bOrder["average_price"])
                 foundOrder.update_timestamp = bOrder["exchange_acknowledgement_date"]
                 logging.debug("%s:%s:%s Updated order %s", self.broker_name, self.short_code, orders[foundOrder], foundOrder)
@@ -232,6 +234,12 @@ class Broker(Base[BreezeConnect]):
                 missingOrders.append(order)
 
         return missingOrders
+
+    def handle_order_update_tick(self, order: Order, tick: Dict):
+        order.order_status = tick["orderStatus"]
+        order.average_price = float(tick.get("averageExecutredRate", 0.0))
+        order.filled_qty = int(tick["executedQuantity"])
+        order.update_timestamp = int(datetime.datetime.strptime(tick["messageDate"] + " " + tick["messageTime"], "%d-%m-%Y %H:%M:%S").timestamp())
 
     def _get_instrument_right(self, trading_symbol):
         if trading_symbol[-2:] == "PE":
@@ -263,9 +271,6 @@ class Broker(Base[BreezeConnect]):
         elif direction == Direction.SHORT:
             return "sell"
         return None
-
-    def handle_order_update_tick(self, data) -> None:
-        logging.info(data)
 
     def get_quote(self, trading_symbol: str, short_code: str, isFnO: bool, exchange: str) -> Quote:
         isd = get_instrument_data_by_symbol(short_code, trading_symbol)
@@ -487,13 +492,26 @@ class Ticker(BaseTicker[Broker]):
         logging.info("ICICI Ticker: Going to connect..")
         self.ticker = ticker
         try:
+            connected = False
+            while connected == False:
+                try:
+                    self.ticker.ws_connect()
+                    connected = True
+                except Exception as e:
+                    time.sleep(1)
+                    # retry
 
-            self.ticker.ws_connect()
-            self.ticker.subscribe_feeds(get_order_notification=True)
+            connected = False
+            while connected == False:
+                try:
+                    self.ticker.subscribe_feeds(get_order_notification=True)
+                    connected = True
+                except Exception as e:
+                    time.sleep(1)
+                    # retry
 
             def on_ticks(bTick):
                 if "symbol" in bTick:
-
                     logging.debug(bTick["symbol"] + " => " + str(bTick["last"]))
                     # convert broker specific Ticks to our system specific Ticks (models.TickData) and pass to super class function
                     ticks = []
@@ -517,7 +535,7 @@ class Ticker(BaseTicker[Broker]):
                     ticks.append(tick)
                     self.on_new_ticks(ticks)
                 else:
-                    self.broker.handle_order_update_tick(bTick)
+                    self.on_order_update(bTick)
 
             # ticker.subscribe_feeds(get_order_notification=True)
             self.ticker.on_ticks = on_ticks

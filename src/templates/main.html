@@ -300,24 +300,24 @@
                               {% endif %}
                             </th>
                           </tr>
-                  {% for trade in strategy.trades| sort (attribute = startTimestamp ) %}
-                    {% if not trade.tradeState in ['disabled']%}
-                        <tr id="{{trade.tradeID}}" class="border-0 border-bottom {% if trade.exit == 0 and not trade.tradeState in ['cancelled'] %}table-active{%else%}table-default{%endif%}">
-                        <td class="text-center border-0 border-end border-secondary-subtle" >{{trade.startTimestamp|ctime}}</td>
+                  {% for trade in strategy.trades| sort (attribute = start_timestamp ) %}
+                    {% if not trade.state in ['disabled']%}
+                        <tr id="{{trade.trade_id}}" class="border-0 border-bottom {% if trade.exit == 0 and not trade.state.value in ['cancelled'] %}table-active{%else%}table-default{%endif%}">
+                        <td class="text-center border-0 border-end border-secondary-subtle" >{{trade.start_timestamp|ctime}}</td>
                         <td class="border-0 border-end border-secondary-subtle">{{trade.trading_symbol}}</td>
-                        <td class="text-center border-0 border-end border-secondary-subtle d-none d-md-table-cell">{{trade.direction}}</td>
-                        <td class="text-end border-0 border-end border-secondary-subtle d-none d-md-table-cell">{{trade.filledQty}}</td>
-                        <td class="text-end border-0 border-end border-secondary-subtle d-md-none" colspan="2"><b>{{ "-" if trade.direction =="SHORT" else "+"}}</b>{{trade.filledQty}}</td> 
+                        <td class="text-center border-0 border-end border-secondary-subtle d-none d-md-table-cell">{{trade.direction.value}}</td>
+                        <td class="text-end border-0 border-end border-secondary-subtle d-none d-md-table-cell">{{trade.filled_qty}}</td>
+                        <td class="text-end border-0 border-end border-secondary-subtle d-md-none" colspan="2"><b>{{ "-" if trade.direction.value =="SHORT" else "+"}}</b>{{trade.filledQty}}</td> 
                         <td class="text-end border-0 border-end border-secondary-subtle">{{"%.2f"|format(trade.entry)}}</td>
                       {% if trade.exit == 0 and not trade.tradeState in ['cancelled'] %}
                         <td class="text-end border-0">{{"%.2f"|format(trade.cmp)}}</td>
                         <td class="text-end border-0 border-start border-secondary-subtle text-end">{{"{:,.2f}".format(trade.pnl)}}</td>
                         <td class="text-end border-0 border-start border-secondary-subtle text-end d-none d-md-table-cell""><b>{{ "" if trade.entry> 0 else "Open"}}</b></td>
-                        <td class="border-0 text-center">{% if session['access_token'] %}<a href="#" onclick="confirmExit('{{ request.path }}/trade/exit/{{trade.tradeID}}','{{trade.trading_symbol}}')" class="exit">Exit Trade</a>{% endif %}</td>
+                        <td class="border-0 text-center">{% if session['access_token'] %}<a href="#" onclick="confirmExit('{{ request.path }}/trade/exit/{{trade.trade_id}}','{{trade.trading_symbol}}')" class="exit">Exit Trade</a>{% endif %}</td>
                       {% else %}
                         <td class="border-0 text-end ">{{"%.2f"|format(trade.exit)}}</td>
                         <td class="border-0 text-end  border-start border-secondary-subtle text-end ">{{"{:,.2f}".format(trade.pnl)}}</td>
-                        <td class="border-0 border-start border-secondary-subtle text-center d-none d-md-table-cell">{{trade.exitReason or trade.tradeState}}</td>
+                        <td class="border-0 border-start border-secondary-subtle text-center d-none d-md-table-cell">{{trade.exit_reason.value or trade.state.value}}</td>
                         <td class="border-0 border-start border-secondary-subtle text-center">{{trade.endTimestamp|ctime or ""}}</td>
                       {% endif %}
                         </tr>

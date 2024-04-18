@@ -23,7 +23,7 @@ from models import (
     Direction,
     OrderType,
     ProductType,
-    TradeExitReason,
+    TickData,
     TradeState,
     UserDetails,
 )
@@ -54,6 +54,7 @@ class BaseAlgo(threading.Thread, ABC):
         ) = args
         self.loop = asyncio.new_event_loop()
         self.tasks: List = []
+        self.registered_symbols: List[str] = []
         asyncio.set_event_loop(self.loop)
         self.trades_queue: asyncio.Queue[Trade] = asyncio.Queue()
         self.orders_queue: asyncio.Queue[Order] = asyncio.Queue()
@@ -184,12 +185,19 @@ class BaseAlgo(threading.Thread, ABC):
             trade: Trade = await self.trades_queue.get()
             self.trades.append(trade)
 
-    def ticker_listener(self, tick):
-        logging.debug("tickerLister: new tick received for %s = %f", tick.trading_symbol, tick.lastTradedPrice)
-        # Store the latest tick in map
-        self.symbol_to_cmp[tick.trading_symbol] = tick.lastTradedPrice
-        if tick.exchange_timestamp:
-            self.symbol_to_cmp["exchange_timestamp"] = tick.exchange_timestamp
+    def ticker_listener(self, tick) -> None:
+        if isinstance(tick, TickData):
+            # assert isinstance(tick, TickData)
+            tick_data: TickData = tick
+            logging.debug("tickerLister: new tick received for %s = %f", tick_data.trading_symbol, tick_data.lastTradedPrice)
+            # Store the latest tick in map
+            self.symbol_to_cmp[tick.trading_symbol] = tick.lastTradedPrice
+            if tick.exchange_timestamp:
+                self.symbol_to_cmp["exchange_timestamp"] = tick.exchange_timestamp
+        elif "orderReference" in tick:
+            tick_order_id = tick["orderReference"]
+            if tick_order_id in self.orders:
+                self.broker.handle_order_update_tick(self.orders[tick_order_id], tick)
 
     def get_trades_by_strategy(self, strategy: str) -> List[Trade]:
         tradesByStrategy = []
@@ -239,10 +247,10 @@ class BaseAlgo(threading.Thread, ABC):
             trade = convert_json_to_trade(tr)
             logging.info("load_trades_from_file trade => %s", trade)
             self.trades.append(trade)
-            if trade.trading_symbol not in self.registeredSymbols:
+            if trade.trading_symbol not in self.registered_symbols:
                 # Algo register symbols with ticker
                 self.ticker.register_symbols([trade.trading_symbol])
-                self.registeredSymbols.append(trade.trading_symbol)
+                self.registered_symbols.append(trade.trading_symbol)
         logging.info("TradeManager: Successfully loaded %d trades from json file %s", len(self.trades), trades_filepath)
 
     def load_strategies_from_file(self):
@@ -293,7 +301,7 @@ class TradeEncoder(json.JSONEncoder):
 def convert_json_to_order(jsonData):
     if jsonData == None:
         return None
-    order = Order()
+    order = Order(None)
     order.trading_symbol = jsonData["trading_symbol"]
     order.exchange = jsonData["exchange"]
     order.product_type = ProductType[jsonData["product_type"]]
@@ -314,7 +322,7 @@ def convert_json_to_order(jsonData):
 
 
 def convert_json_to_trade(jsonData):
-    trade = Trade(jsonData["tradingSymbol"])
+    trade = Trade(jsonData["trading_symbol"])
     trade.trade_id = jsonData["trade_id"]
     trade.strategy = jsonData["strategy"]
     trade.direction = Direction[jsonData["direction"]]
@@ -341,9 +349,9 @@ def convert_json_to_trade(jsonData):
     trade.start_timestamp = jsonData["start_timestamp"]
     trade.end_timestamp = jsonData["end_timestamp"]
     trade.pnl = jsonData["pnl"]
-    trade.pnl_percentage = jsonData["pnlPercentage"]
+    trade.pnl_percentage = jsonData["pnl_percentage"]
     trade.exit = jsonData["exit"]
-    trade.exit_reason = TradeExitReason[jsonData["exit_reason"]]
+    trade.exit_reason = jsonData["exit_reason"]
     trade.exchange = jsonData["exchange"]
     trade.sl_orders
     for entry_order in jsonData["entry_orders"]:
