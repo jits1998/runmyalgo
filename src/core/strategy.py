@@ -268,9 +268,9 @@ class BaseStrategy(ABC):
             elif entryOrder.order_status not in [OrderStatus.REJECTED, OrderStatus.CANCELLED, None] and not entryOrder.order_type in [OrderType.SL_LIMIT]:
                 omp = OrderModifyParams()
                 if trade.direction == Direction.LONG:
-                    omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, entryOrder.price * 1.01) + 0.05
+                    omp.new_price = round_to_ticksize(self.short_code, trade.trading_symbol, entryOrder.price * 1.01) + 0.05
                 else:
-                    omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, entryOrder.price * 0.99) - 0.05
+                    omp.new_price = round_to_ticksize(self.short_code, trade.trading_symbol, entryOrder.price * 0.99) - 0.05
                 try:
                     self.modify_order(entryOrder, omp, trade.qty)
                 except Exception as e:
@@ -338,11 +338,11 @@ class BaseStrategy(ABC):
                     newPrice = (slOrder.price + get_cmp(self.short_code, trade.trading_symbol)) * 0.5
                     omp = OrderModifyParams()
                     if trade.direction == Direction.LONG:
-                        omp.newTriggerPrice = round_to_ticksize(self.short_code, trade.trading_symbol, newPrice) - 0.05
-                        omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, (newPrice * 0.99)) - 0.05
+                        omp.new_trigger_price = round_to_ticksize(self.short_code, trade.trading_symbol, newPrice) - 0.05
+                        omp.new_price = round_to_ticksize(self.short_code, trade.trading_symbol, (newPrice * 0.99)) - 0.05
                     else:
-                        omp.newTriggerPrice = round_to_ticksize(self.short_code, trade.trading_symbol, newPrice) + 0.05
-                        omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, newPrice * 1.01) + 0.05
+                        omp.new_trigger_price = round_to_ticksize(self.short_code, trade.trading_symbol, newPrice) + 0.05
+                        omp.new_price = round_to_ticksize(self.short_code, trade.trading_symbol, newPrice * 1.01) + 0.05
 
                     self.modify_order(slOrder, omp, trade.qty)
 
@@ -401,9 +401,9 @@ class BaseStrategy(ABC):
                     self.square_off_trade(trade, reason=TradeExitReason.SL_HIT)
         if updateSL == True:
             omp = OrderModifyParams()
-            omp.newTriggerPrice = newTrailSL
-            omp.newPrice = round_to_ticksize(
-                self.short_code, trade.trading_symbol, omp.newTriggerPrice * (0.99 if trade.direction == Direction.LONG else 1.01)
+            omp.new_trigger_price = newTrailSL
+            omp.new_price = round_to_ticksize(
+                self.short_code, trade.trading_symbol, omp.new_trigger_price * (0.99 if trade.direction == Direction.LONG else 1.01)
             )
             # sl order direction is reverse
             try:
@@ -443,11 +443,11 @@ class BaseStrategy(ABC):
                     targetOpen += 1
                     omp = OrderModifyParams()
                     if trade.direction == Direction.LONG:
-                        omp.newTriggerPrice = round_to_ticksize(targetOrder.price * 0.99) - 0.05
-                        omp.newPrice = round_to_ticksize(omp.newTriggerPrice * 0.99) - 0.05
+                        omp.new_trigger_price = round_to_ticksize(targetOrder.price * 0.99) - 0.05
+                        omp.new_price = round_to_ticksize(omp.new_trigger_price * 0.99) - 0.05
                     else:
-                        omp.newTriggerPrice = round_to_ticksize(targetOrder.price * 1.01) + 0.05
-                        omp.newPrice = round_to_ticksize(omp.newTriggerPrice * 1.01) + 0.05
+                        omp.new_trigger_price = round_to_ticksize(targetOrder.price * 1.01) + 0.05
+                        omp.new_price = round_to_ticksize(omp.new_trigger_price * 1.01) + 0.05
 
                     self.modify_order(targetOrder, omp, trade.qty)
 
@@ -622,7 +622,7 @@ class BaseStrategy(ABC):
             for targetOrder in trade.target_orders:
                 if targetOrder.order_status == OrderStatus.OPEN:
                     omp = OrderModifyParams()
-                    omp.newPrice = round_to_ticksize(self.short_code, trade.trading_symbol, trade.cmp * (0.99 if trade.direction == Direction.LONG else 1.01))
+                    omp.new_price = round_to_ticksize(self.short_code, trade.trading_symbol, trade.cmp * (0.99 if trade.direction == Direction.LONG else 1.01))
                     self.modify_order(targetOrder, omp, trade.filled_qty)
         elif trade.entry > 0:
             # Place new target order to exit position, adjust target to current market price
@@ -702,6 +702,7 @@ class BaseStrategy(ABC):
         trade.target = 0  # setting to 0 as no target is applicable for this trade
 
         trade.intraday_squareoff_timestamp = get_epoch(self.squareOffTimestamp)
+        trade.state = TradeState.ACTIVE
         trade.start_timestamp = get_epoch()
         self.trades.append(trade)
         self.place_entry_order(trade)

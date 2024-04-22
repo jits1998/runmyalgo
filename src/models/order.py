@@ -43,25 +43,29 @@ class OrderInputParams:
 
 class OrderModifyParams:
 
-    newPrice: float
-    newTriggerPrice: float  # Applicable in case of SL order
-    newQty: int
+    new_price: float
+    new_trigger_price: float  # Applicable in case of SL order
+    new_qty: int
     # Ex: Can change LIMIT order to SL order or vice versa. Not supported by all brokers
-    newOrderType: OrderType
+    new_order_type: OrderType
 
     def __init__(self):
+        self.new_price = 0.0
+        self.new_trigger_price = 0.0
+        self.new_qty = 0
+        self.new_order_type = OrderType.SL_LIMIT
         pass
 
     def __str__(self):
         return (
             "newPrice="
-            + str(self.newPrice)
+            + str(self.new_price)
             + ", newTriggerPrice="
-            + str(self.newTriggerPrice)
+            + str(self.new_trigger_price)
             + ", newQty="
-            + str(self.newQty)
+            + str(self.new_qty)
             + ", newOrderType="
-            + str(self.newOrderType)
+            + str(self.new_order_type)
         )
 
 

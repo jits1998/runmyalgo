@@ -21,6 +21,7 @@ from instruments import symbol_to_CMP as cmp
 from models import (
     AlgoStatus,
     Direction,
+    OrderStatus,
     OrderType,
     ProductType,
     TickData,
@@ -247,6 +248,9 @@ class BaseAlgo(threading.Thread, ABC):
             trade = convert_json_to_trade(tr)
             logging.info("load_trades_from_file trade => %s", trade)
             self.trades.append(trade)
+            self.orders.update([(order.order_id, order) for order in trade.entry_orders])
+            self.orders.update([(order.order_id, order) for order in trade.sl_orders])
+            self.orders.update([(order.order_id, order) for order in trade.target_orders])
             if trade.trading_symbol not in self.registered_symbols:
                 # Algo register symbols with ticker
                 self.ticker.register_symbols([trade.trading_symbol])
@@ -310,7 +314,7 @@ def convert_json_to_order(jsonData):
     order.trigger_price = jsonData["trigger_price"]
     order.qty = jsonData["qty"]
     order.order_id = jsonData["order_id"]
-    order.order_status = jsonData["order_status"]
+    order.order_status = OrderStatus[jsonData["order_status"]]
     order.average_price = jsonData["average_price"]
     order.filled_qty = jsonData["filled_qty"]
     order.pending_qty = jsonData["pending_qty"]
@@ -321,7 +325,7 @@ def convert_json_to_order(jsonData):
     return order
 
 
-def convert_json_to_trade(jsonData):
+def convert_json_to_trade(jsonData) -> Trade:
     trade = Trade(jsonData["trading_symbol"])
     trade.trade_id = jsonData["trade_id"]
     trade.strategy = jsonData["strategy"]

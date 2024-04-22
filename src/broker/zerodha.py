@@ -109,11 +109,11 @@ class Broker(Base[KiteConnect]):
     def modify_order(self, order: Order, omp: OrderModifyParams, tradeQty: int):
         logging.info("%s:%s:: Going to modify order with params %s", self.broker_name, self.short_code, omp)
 
-        if order.order_type == OrderType.SL_LIMIT and omp.newTriggerPrice == order.trigger_price:
+        if order.order_type == OrderType.SL_LIMIT and omp.new_trigger_price == order.trigger_price:
             logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
             # nothing to modify
             return order
-        elif order.order_type == OrderType.LIMIT and omp.newPrice < 0 or omp.newPrice == order.price:
+        elif order.order_type == OrderType.LIMIT and omp.new_price < 0 or omp.new_price == order.price:
             # nothing to modify
             logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
             return order
@@ -125,10 +125,10 @@ class Broker(Base[KiteConnect]):
             orderId = kite.modify_order(
                 variety=kite.VARIETY_REGULAR if tradeQty <= freeze_limit else kite.VARIETY_ICEBERG,
                 order_id=order.order_id,
-                quantity=int(omp.newQty) if omp.newQty > 0 else None,
-                price=omp.newPrice if omp.newPrice > 0 else None,
-                trigger_price=omp.newTriggerPrice if omp.newTriggerPrice > 0 else None,
-                order_type=omp.newOrderType if omp.newOrderType != None else None,
+                quantity=int(omp.new_qty) if omp.new_qty > 0 else None,
+                price=omp.new_price if omp.new_price > 0 else None,
+                trigger_price=omp.new_trigger_price if omp.new_trigger_price > 0 else None,
+                order_type=omp.new_order_type if omp.new_order_type != None else None,
             )
 
             logging.info("%s:%s Order modified successfully for orderId = %s", self.broker_name, self.short_code, orderId)

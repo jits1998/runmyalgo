@@ -75,5 +75,4 @@ port = server_config.get("port", "8080")
 
 flask_app.jinja_env.filters["ctime"] = timectime
 
-flask_app.add_url_rule("/", "default_home", redirect_home)
-from views import home
+from views import actions, home

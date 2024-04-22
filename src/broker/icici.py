@@ -117,11 +117,11 @@ class Broker(Base[BreezeConnect]):
     def modify_order(self, order: Order, omp: OrderModifyParams, tradeQty: int) -> Order:
         logging.info("%s:%s:: Going to modify order with params %s", self.broker_name, self.short_code, omp)
 
-        if order.order_type == OrderType.SL_LIMIT and omp.newTriggerPrice == order.trigger_price:
+        if order.order_type == OrderType.SL_LIMIT and omp.new_trigger_price == order.trigger_price:
             logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
             # nothing to modify
             return order
-        elif order.order_type == OrderType.LIMIT and omp.newPrice < 0 or omp.newPrice == order.price:
+        elif order.order_type == OrderType.LIMIT and omp.new_price < 0 or omp.new_price == order.price:
             # nothing to modify
             logging.info("%s:%s:: Not Going to modify order with params %s", self.broker_name, self.short_code, omp)
             return order
@@ -133,9 +133,9 @@ class Broker(Base[BreezeConnect]):
             orderId = breeze.modify_order(
                 order_id=order.order_id,
                 exchange_code="NFO",
-                quantity=int(omp.newQty) if omp.newQty > 0 else None,
-                price=omp.newPrice if omp.newPrice > 0 else None,
-                stoploss=omp.newTriggerPrice if omp.newTriggerPrice > 0 and order.order_type == OrderType.SL_LIMIT else None,
+                quantity=int(omp.new_qty) if omp.new_qty > 0 else None,
+                price=omp.new_price if omp.new_price > 0 else None,
+                stoploss=omp.new_trigger_price if omp.new_trigger_price > 0 and order.order_type == OrderType.SL_LIMIT else None,
             )
 
             logging.info("%s:%s Order modified successfully for orderId = %s", self.broker_name, self.short_code, orderId)
@@ -171,12 +171,16 @@ class Broker(Base[BreezeConnect]):
             logging.info("%s:%s Order cancel failed: %s", self.broker_name, self.short_code, str(e))
             raise Exception(str(e))
 
-    def fetch_update_all_orders(self, orders: Dict[Order, Any]) -> List[Order]:
+    def fetch_update_all_orders(self, orders: Dict[str, Order]) -> List[Order]:
         logging.debug("%s:%s Going to fetch order book", self.broker_name, self.short_code)
         breeze = self.broker_handle
         orderBook = None
         try:
-            orderBook = breeze.get_order_list()
+            orderBook = breeze.get_order_list(
+                exchange_code="NFO",
+                from_date=datetime.datetime.now().isoformat()[:10] + "T05:30:00.000Z",
+                to_date=datetime.datetime.now().isoformat()[:10] + "T05:30:00.000Z",
+            )["Success"]
         except Exception as e:
             import traceback
 
@@ -192,7 +196,7 @@ class Broker(Base[BreezeConnect]):
             foundOrder = None
             foundChildOrder = None
             parentOrder = None
-            for order in orders.keys():
+            for order in orders.values():
                 if order.order_id == bOrder["order_id"]:
                     foundOrder = order
                 if order.order_id == bOrder["parent_order_id"]:
@@ -206,15 +210,12 @@ class Broker(Base[BreezeConnect]):
                 foundOrder.pending_qty = int(bOrder["pending_quantity"])
                 foundOrder.filled_qty = foundOrder.qty - foundOrder.pending_qty
 
-                foundOrder.order_status = bOrder["status"]
-                if foundOrder.order_status == OrderStatus.CANCELLED and foundOrder.filled_qty > 0:
-                    # Consider this case as completed in our system as we cancel the order with pending qty when strategy stop timestamp reaches
-                    foundOrder.order_status = OrderStatus.COMPLETE
+                foundOrder.order_status = self._map_order_status(foundOrder, bOrder["status"])
                 foundOrder.price = float(bOrder["price"])
                 foundOrder.trigger_price = float(bOrder["SLTP_price"]) if bOrder["SLTP_price"] != None else 0.0
                 foundOrder.average_price = float(bOrder["average_price"])
                 foundOrder.update_timestamp = bOrder["exchange_acknowledgement_date"]
-                logging.debug("%s:%s:%s Updated order %s", self.broker_name, self.short_code, orders[foundOrder], foundOrder)
+                logging.debug("%s:%s:%s Updated order %s", self.broker_name, self.short_code, orders[foundOrder.order_id], foundOrder)
                 numOrdersUpdated += 1
             elif foundChildOrder != None:
                 assert parentOrder is not None
@@ -236,7 +237,8 @@ class Broker(Base[BreezeConnect]):
         return missingOrders
 
     def handle_order_update_tick(self, order: Order, tick: Dict):
-        order.order_status = tick["orderStatus"]
+
+        order.order_status = self._map_order_status(order, tick["orderStatus"])
         order.average_price = float(tick.get("averageExecutredRate", 0.0))
         order.filled_qty = int(tick["executedQuantity"])
         order.update_timestamp = int(datetime.datetime.strptime(tick["messageDate"] + " " + tick["messageTime"], "%d-%m-%Y %H:%M:%S").timestamp())
@@ -264,6 +266,17 @@ class Broker(Base[BreezeConnect]):
         elif order_type == OrderType.SL_LIMIT:
             return "stoploss"
         return None
+
+    def _map_order_status(self, order: Order, status: str):
+        if status == "Executed":
+            return OrderStatus.COMPLETE
+        elif status == "Ordered":
+            if order.order_type == OrderType.LIMIT:
+                return OrderStatus.OPEN
+        if status.upper() == OrderStatus.CANCELLED and order.filled_qty > 0:
+            # Consider this case as completed in our system as we cancel the order with pending qty when strategy stop timestamp reaches
+            return OrderStatus.COMPLETE
+        return OrderStatus[status.upper()]
 
     def _convert_to_broker_direction(self, direction):
         if direction == Direction.LONG:

@@ -301,7 +301,7 @@
                             </th>
                           </tr>
                   {% for trade in strategy.trades| sort (attribute = start_timestamp ) %}
-                    {% if not trade.state in ['disabled']%}
+                    {% if not trade.state.value in ['disabled']%}
                         <tr id="{{trade.trade_id}}" class="border-0 border-bottom {% if trade.exit == 0 and not trade.state.value in ['cancelled'] %}table-active{%else%}table-default{%endif%}">
                         <td class="text-center border-0 border-end border-secondary-subtle" >{{trade.start_timestamp|ctime}}</td>
                         <td class="border-0 border-end border-secondary-subtle">{{trade.trading_symbol}}</td>
@@ -309,7 +309,7 @@
                         <td class="text-end border-0 border-end border-secondary-subtle d-none d-md-table-cell">{{trade.filled_qty}}</td>
                         <td class="text-end border-0 border-end border-secondary-subtle d-md-none" colspan="2"><b>{{ "-" if trade.direction.value =="SHORT" else "+"}}</b>{{trade.filledQty}}</td> 
                         <td class="text-end border-0 border-end border-secondary-subtle">{{"%.2f"|format(trade.entry)}}</td>
-                      {% if trade.exit == 0 and not trade.tradeState in ['cancelled'] %}
+                      {% if trade.exit == 0 and not trade.state.value in ['cancelled'] %}
                         <td class="text-end border-0">{{"%.2f"|format(trade.cmp)}}</td>
                         <td class="text-end border-0 border-start border-secondary-subtle text-end">{{"{:,.2f}".format(trade.pnl)}}</td>
                         <td class="text-end border-0 border-start border-secondary-subtle text-end d-none d-md-table-cell""><b>{{ "" if trade.entry> 0 else "Open"}}</b></td>
@@ -440,7 +440,7 @@
                         
                       </thead>
                     {% for order in orders %}
-                    {% if order.status not in ['COMPLETE','CANCELLED'] %}
+                    {% if order.status.value() not in ['COMPLETE','CANCELLED'] %}
                     <tr>
                       <!--{'placed_by': 'OZ5207', 'order_id': '240120602114910', 'exchange_order_id': '1700000139686394', 
                         'parent_order_id': None, 'status': 'TRIGGER PENDING', 'status_message': None, 'status_message_raw': None, 
